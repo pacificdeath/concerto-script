@@ -231,8 +231,6 @@ void editor_load_file(Editor *editor, char *filename) {
         fclose(file);
         return;
     }
-    editor->cursor_x = 0;
-    editor->cursor_line = 0;
     editor->line_count = 1;
     int i;
     for (i = 0; fgets(line, sizeof(line), file) != NULL; i += 1) {
@@ -365,18 +363,18 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
         editor->visual_vertical_offset = editor->cursor_line;
     }
 
-    bool found_word = false;
-    Color color = EDITOR_NORMAL_COLOR;
-
     for (int i = 0; i < lines; i++) {
-        bool rest_is_comment = false;
         int line_idx = editor->visual_vertical_offset + i;
 
-        sprintf(line_number_str, "%4i", i + 1);
+        bool rest_is_comment = false;
+        bool found_word = false;
+        Color color = EDITOR_NORMAL_COLOR;
+
+        sprintf(line_number_str, "%4i", line_idx + 1);
         int line_number_str_len = strlen(line_number_str);
 
         for (int j = 0; j < line_number_str_len; j++) {
-            Vector2 position = { editor_x + (j * char_width), editor_y + (line_idx * line_height) };
+            Vector2 position = { editor_x + (j * char_width), editor_y + (i * line_height) };
             DrawTextCodepoint(*font, line_number_str[j], position, line_height, EDITOR_LINENUMBER_COLOR);
         }
 
@@ -444,7 +442,7 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
 
             Vector2 position = {
                 editor_x + line_number_offset  + (j * char_width),
-                editor_y + (line_idx * line_height)
+                editor_y + (i * line_height)
             };
 
             DrawTextCodepoint(*font, c, position, line_height, color);
