@@ -113,6 +113,7 @@ typedef struct Compiler_Result {
     Token *tokens;
     int tone_amount;
     Tone *tones;
+    uint16_t used_notes;
 } Compiler_Result;
 
 int is_valid_in_identifier (char c) {
@@ -279,11 +280,13 @@ static Token *token_add(Compiler_Result *result, Token_Type token_type) {
     return token;
 }
 
-static void tone_add(Compiler_Result *result, int note, float frequency, float duration) {
+static void tone_add(Compiler_Result *result, int note, float frequency, float duration, uint16_t scale) {
     Tone* tone = &(result->tones[result->tone_amount]);
     tone->note = note;
     tone->frequency = frequency;
     tone->duration = duration;
+    tone->scale = scale;
+    result->used_notes |= 1 << (note + 96) % 12;
     (result->tone_amount)++;
 }
 
@@ -418,6 +421,8 @@ Compiler_Result *compile(char *data[], int data_len) {
 
     result->tone_amount = 0;
     result->tones = NULL;
+
+    result->used_notes = 0;
 
     // start lexer
     {
@@ -598,11 +603,11 @@ Compiler_Result *compile(char *data[], int data_len) {
             case PLAY:
                 float bpm_play_duration = duration_sec * 240 / bpm;
                 float frequency = note_to_frequency(note);
-                tone_add(result, note, frequency, bpm_play_duration);
+                tone_add(result, note, frequency, bpm_play_duration, scale);
                 break;
             case WAIT:
                 float bpm_wait_duration = duration_sec * 240 / bpm;
-                tone_add(result, SILENCE, 0.0, bpm_wait_duration);
+                tone_add(result, SILENCE, 0.0, bpm_wait_duration, scale);
                 break;
             case SETDURATION:
                 i += 1;
@@ -706,7 +711,7 @@ Compiler_Result *compile(char *data[], int data_len) {
                     return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
                 }
                 if (setting_scale) {
-                    i += 3; // skip over identifier and '('
+                    i += 1;
                     Compiler_Error_Type scale_error = NO_ERROR;
                     scale = get_scale(result->token_amount, tokens, &i, &scale_error);
                     if (scale_error != NO_ERROR) {

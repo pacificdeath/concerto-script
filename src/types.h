@@ -5,6 +5,7 @@ typedef struct Tone {
     int note;
     float frequency;
     float duration;
+    uint16_t scale;
 } Tone;
 
 #endif

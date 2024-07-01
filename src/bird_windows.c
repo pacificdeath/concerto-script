@@ -15,20 +15,6 @@ Thread thread_create(void (*thread_function)(void *), void *thread_argument) {
 
 void thread_join(Thread thread) {
     u32 result = WaitForSingleObject(thread, INFINITE);
-    switch (result) {
-    case WAIT_ABANDONED:
-        printf("WAIT ABANDONED\n");
-        break;
-    case WAIT_OBJECT_0:
-        printf("WAIT OBJECT 0\n");
-        break;
-    case WAIT_TIMEOUT:
-        printf("WAIT TIMEOUT\n");
-        break;
-    case WAIT_FAILED:
-        printf("WAIT FAILED: %d\n", GetLastError());
-        break;
-    }
 }
 
 void thread_destroy(Thread thread) {

@@ -1,14 +1,20 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include "raylib.h"
 
+#define EDITOR_MAX_VISUAL_LINES 30
+#define EDITOR_OFFSET_X 20
+#define EDITOR_OFFSET_Y 20
 #define EDITOR_FILENAME_MAX_LENGTH 256
 #define EDITOR_LINE_CAPACITY 256
 #define EDITOR_LINE_MAX_LENGTH 256
 #define AUTO_CLICKABLE_KEYS_AMOUNT 6
 #define AUTOCLICK_LOWER_THRESHOLD 0.3F
 #define AUTOCLICK_UPPER_THRESHOLD 0.33F
+#define EDITOR_CURSOR_WIDTH 3
+#define EDITOR_CURSOR_ANIMATION_SPEED 10.0f
 #define EDITOR_BG_COLOR (Color) { 0, 0, 0, 215 }
 #define EDITOR_NORMAL_COLOR (Color) { 255, 255, 255, 255 }
 #define EDITOR_PLAY_COLOR (Color) { 0, 255, 0, 255 }
@@ -16,7 +22,8 @@
 #define EDITOR_KEYWORD_COLOR (Color) { 0, 127, 255, 255 }
 #define EDITOR_PAREN_COLOR (Color) { 255, 255, 0, 255 }
 #define EDITOR_SPACE_COLOR (Color) { 255, 255, 255, 32 }
-#define EDITOR_CURSOR_COLOR (Color) { 255, 255, 0, 127 }
+#define EDITOR_CURSOR_COLOR (Color) { 255, 0, 255, 255 }
+#define EDITOR_SELECTION_COLOR (Color) { 0, 255, 0, 127 }
 #define EDITOR_LINENUMBER_COLOR (Color) { 127, 127, 127, 255 }
 #define EDITOR_COMMENT_COLOR (Color) { 255, 0, 255, 127 }
 
@@ -31,21 +38,144 @@ typedef struct Editor {
     int line_count;
     int cursor_x;
     int cursor_line;
+    int selection_x;
+    int selection_line;
     char current_file[EDITOR_FILENAME_MAX_LENGTH];
     int autoclick_key;
     float autoclick_down_time;
     int auto_clickable_keys[AUTO_CLICKABLE_KEYS_AMOUNT];
     int visual_vertical_offset;
+    float cursor_anim_time;
     Editor_Command command;
 } Editor;
 
-static void editor_clear(Editor *editor) {
-    for (int i = 0; i < EDITOR_LINE_CAPACITY; i++) {
-        editor->lines[i][0] = '\0';
+typedef struct Editor_Cursor_Render_Data {
+    int line;
+    int x;
+    int line_number_offset;
+    int visual_vertical_offset;
+    int char_width;
+    int line_height;
+    float alpha;
+} Editor_Cursor_Render_Data;
+
+typedef struct Editor_Selection_Render_Data {
+    int line;
+    int line_number_offset;
+    int visual_vertical_offset;
+    int start_x;
+    int end_x;
+    int char_width;
+    int line_height;
+} Editor_Selection_Render_Data;
+
+typedef struct Editor_Selection_Data {
+    int start_line;
+    int end_line;
+    int start_x;
+    int end_x;
+} Editor_Selection_Data;
+
+static void editor_set_cursor_x(Editor *editor, int x) {
+    editor->cursor_x = x;
+    editor->selection_x = x;
+    editor->selection_line = editor->cursor_line;
+    editor->cursor_anim_time = 0.0;
+}
+
+static void editor_set_cursor_line(Editor *editor, int line) {
+    editor->cursor_line = line;
+    editor->selection_line = line;
+    editor->selection_x = editor->cursor_x;
+    editor->cursor_anim_time = 0.0;
+}
+
+static void editor_set_selection_x(Editor *editor, int x) {
+    editor->cursor_x = x;
+    editor->cursor_anim_time = 0.0;
+}
+
+static void editor_set_selection_line(Editor *editor, int line) {
+    editor->cursor_line = line;
+    editor->cursor_anim_time = 0.0;
+}
+
+static bool editor_selection_active(Editor *editor) {
+    bool same_line = editor->selection_line == editor->cursor_line;
+    bool same_char = editor->selection_x == editor->cursor_x;
+    return !same_line || !same_char;
+}
+
+static Editor_Selection_Data editor_get_selection_data(Editor *editor) {
+    int start_line;
+    Editor_Selection_Data selection_data;
+    if (editor->cursor_line < editor->selection_line) {
+        selection_data.start_line = editor->cursor_line;
+        selection_data.end_line = editor->selection_line;
+        selection_data.start_x = editor->cursor_x;
+        selection_data.end_x = editor->selection_x;
+    } else if (editor->cursor_line > editor->selection_line) {
+        selection_data.start_line = editor->selection_line;
+        selection_data.end_line = editor->cursor_line;
+        selection_data.start_x = editor->selection_x;
+        selection_data.end_x = editor->cursor_x;
+    } else {
+        selection_data.start_line = editor->cursor_line;
+        selection_data.end_line = editor->cursor_line;
+        if (editor->cursor_x < editor->selection_x) {
+            selection_data.start_x = editor->cursor_x;
+            selection_data.end_x = editor->selection_x;
+        } else if (editor->cursor_x > editor->selection_x) {
+            selection_data.start_x = editor->selection_x;
+            selection_data.end_x = editor->cursor_x;
+        } else {
+            selection_data.start_x = editor->cursor_x;
+            selection_data.end_x = editor->cursor_x;
+        }
     }
+    return selection_data;
+}
+
+static bool editor_delete_selection(Editor *editor) {
+    if (!editor_selection_active(editor)) {
+        return false;
+    }
+    Editor_Selection_Data selection_data = editor_get_selection_data(editor);
+    char str_buffer[2048];
+    if (selection_data.start_line < selection_data.end_line) {
+        editor->lines[selection_data.start_line][selection_data.start_x] = '\0';
+        int delete_amount = selection_data.end_line - selection_data.start_line;
+        int i;
+        for (i = 0; i < strlen(editor->lines[selection_data.end_line]) - selection_data.end_x; i++) {
+            str_buffer[i] = editor->lines[selection_data.end_line][i + selection_data.end_x];
+        }
+        str_buffer[i] = '\0';
+        strcat(editor->lines[selection_data.start_line], str_buffer);
+        for (i = selection_data.start_line + 1; i < editor->line_count - 1; i++) {
+            int copy_line = i + delete_amount;
+            if (copy_line >= editor->line_count - 1) {
+                editor->lines[i][0] = '\0';
+            } else {
+                strcpy(editor->lines[i], editor->lines[copy_line]);
+            }
+        }
+        editor->line_count -= delete_amount;
+    } else {
+        int i;
+        for (i = 0; i < strlen(editor->lines[selection_data.start_line]) - selection_data.end_x; i++) {
+            str_buffer[i] = editor->lines[selection_data.start_line][i + selection_data.end_x];
+        }
+        str_buffer[i] = '\0';
+        editor->lines[selection_data.start_line][selection_data.start_x] = '\0';
+        strcat(editor->lines[selection_data.start_line], str_buffer);
+    }
+    editor_set_cursor_line(editor, selection_data.start_line);
+    editor_set_cursor_x(editor, selection_data.start_x);
+    return true;
 }
 
 static void editor_new_line(Editor *editor) {
+    editor_delete_selection(editor);
     if (editor->line_count >= EDITOR_LINE_CAPACITY - 1) {
         // TODO: this is currently a silent failure and it should not at all be that
         return;
@@ -67,16 +197,17 @@ static void editor_new_line(Editor *editor) {
     for (int i = editor->line_count - 1; i > editor->cursor_line; i--) {
         strcpy(editor->lines[i], editor->lines[i - 1]);
     }
-    editor->cursor_line++;
-    editor->cursor_x = 0;
+    editor_set_cursor_line(editor, editor->cursor_line + 1);
+    editor_set_cursor_x(editor, 0);
     strcpy(editor->lines[editor->cursor_line], cut_line);
     free(cut_line);
 }
 
 static void editor_add_char(Editor *editor, char c) {
+    editor_delete_selection(editor);
     char next = editor->lines[editor->cursor_line][editor->cursor_x];
     editor->lines[editor->cursor_line][editor->cursor_x] = c;
-    editor->cursor_x++;
+    editor_set_cursor_x(editor, editor->cursor_x + 1);
     int j = editor->cursor_x;
     while (1) {
         char tmp = editor->lines[editor->cursor_line][j];
@@ -90,38 +221,52 @@ static void editor_add_char(Editor *editor, char c) {
     editor->lines[editor->cursor_line][j + 1] = '\0';
 }
 
-static void editor_trigger_key(Editor *editor, int key, bool ctrl) {
+static void editor_trigger_key(Editor *editor, int key, bool ctrl, bool shift) {
+    void (*set_target_line)(Editor *, int) = shift
+        ? editor_set_selection_line
+        : editor_set_cursor_line;
+
+    void (*set_target_x)(Editor *, int) = shift
+        ? editor_set_selection_x
+        : editor_set_cursor_x;
+
     switch (key) {
     case KEY_RIGHT:
-        if (ctrl && editor->line_count > editor->cursor_line && editor->lines[editor->cursor_line][editor->cursor_x] == '\0') {
-            editor->cursor_line++;
-            editor->cursor_x = 0;
+        if (ctrl &&
+            editor->cursor_line < (editor->line_count - 1) &&
+            editor->lines[editor->cursor_line][editor->cursor_x] == '\0'
+        ) {
+            set_target_line(editor, editor->cursor_line + 1);
+            set_target_x(editor, 0);
         } else if (editor->lines[editor->cursor_line][editor->cursor_x] != '\0') {
             if (ctrl) {
                 bool found_whitespace = false;
                 int i = editor->cursor_x;
                 while (1) {
                     if (editor->lines[editor->cursor_line][i] == '\0') {
-                        editor->cursor_x = i;
+                        set_target_x(editor, i);
                         break;
                     }
                     if (!found_whitespace && isspace(editor->lines[editor->cursor_line][i])) {
                         found_whitespace = true;
                     } else if (found_whitespace && !isspace(editor->lines[editor->cursor_line][i])) {
-                        editor->cursor_x = i;
+                        set_target_x(editor, i);
                         break;
                     }
                     i++;
                 }
             } else {
-                editor->cursor_x++;
+                set_target_x(editor, editor->cursor_x + 1);
             }
+        } else {
+            // potentially reset selection
+            set_target_x(editor, editor->cursor_x);
         }
         break;
     case KEY_LEFT:
         if (ctrl && editor->cursor_x == 0 && editor->cursor_line > 0) {
-            editor->cursor_line--;
-            editor->cursor_x = strlen(editor->lines[editor->cursor_line]);
+            set_target_line(editor, editor->cursor_line - 1);
+            set_target_x(editor, strlen(editor->lines[editor->cursor_line]));
         } else if (editor->cursor_x > 0) {
             if (ctrl) {
                 int i = editor->cursor_x;
@@ -131,47 +276,55 @@ static void editor_trigger_key(Editor *editor, int key, bool ctrl) {
                 bool found_word = false;
                 while (1) {
                     if (i == 0) {
-                        editor->cursor_x = 0;
+                        set_target_x(editor, 0);
                         break;
                     }
                     if (!found_word && editor->lines[editor->cursor_line][i] != ' ') {
                         found_word = true;
                     } else if (found_word && editor->lines[editor->cursor_line][i] == ' ') {
-                        editor->cursor_x = i + 1;
+                        set_target_x(editor, i + 1);
                         break;
                     }
                     i--;
                 }
             } else {
-                editor->cursor_x--;
+                set_target_x(editor, editor->cursor_x - 1);
             }
+        } else {
+            // potentially reset selection
+            set_target_x(editor, editor->cursor_x);
         }
         break;
     case KEY_DOWN:
         {
+            int line = editor->cursor_line;
             if (editor->cursor_line < editor->line_count - 1) {
-                editor->cursor_line++;
+                line++;
             }
+            set_target_line(editor, line);
             int len = strlen(editor->lines[editor->cursor_line]);
-            if (editor->cursor_x >= len) {
-                editor->cursor_x = len;
-            }
+            int x = editor->cursor_x >= len ? len : editor->cursor_x;
+            set_target_x(editor, x);
         }
         break;
     case KEY_UP:
         {
+            int line = editor->cursor_line;
             if (editor->cursor_line > 0) {
-                editor->cursor_line--;
+                line--;
             }
+            set_target_line(editor, line);
             int len = strlen(editor->lines[editor->cursor_line]);
-            if (editor->cursor_x >= len) {
-                editor->cursor_x = len;
-            }
+            int x = editor->cursor_x >= len ? len : editor->cursor_x;
+            set_target_x(editor, x);
         }
         break;
     case KEY_BACKSPACE:
+        if (editor_delete_selection(editor)) {
+            break;
+        }
         if (editor->cursor_x > 0) {
-            editor->cursor_x--;
+            editor_set_cursor_x(editor, editor->cursor_x - 1);
             int i;
             for (i = editor->cursor_x; editor->lines[editor->cursor_line][i] != '\0'; i++) {
                 editor->lines[editor->cursor_line][i] = editor->lines[editor->cursor_line][i + 1];
@@ -185,8 +338,8 @@ static void editor_trigger_key(Editor *editor, int key, bool ctrl) {
                 for (int i = editor->cursor_line; i < editor->line_count; i++) {
                     strcpy(editor->lines[i], editor->lines[i + 1]);
                 }
-                editor->cursor_line--;
-                editor->cursor_x = prev_line_len;
+                editor_set_cursor_line(editor, editor->cursor_line - 1);
+                editor_set_cursor_x(editor, prev_line_len);
                 editor->line_count--;
             } else {
                 //TODO
@@ -204,6 +357,8 @@ Editor *editor_allocate() {
 
     editor->cursor_x = 0;
     editor->cursor_line = 0;
+    editor->selection_x = 0;
+    editor->selection_line = 0;
     editor->line_count = 1;
 
     editor->autoclick_key = KEY_NULL;
@@ -219,7 +374,11 @@ Editor *editor_allocate() {
 
     editor->command = EDITOR_COMMAND_NONE;
 
-    editor_clear(editor);
+    for (int i = 0; i < EDITOR_LINE_CAPACITY; i++) {
+        editor->lines[i][0] = '\0';
+    }
+
+    editor->cursor_anim_time = 0.0f;
     return editor;
 }
 
@@ -328,12 +487,12 @@ void editor_input(Editor *editor, float delta_time) {
         if (IsKeyPressed(key)) {
             editor->autoclick_key = key;
             editor->autoclick_down_time = 0.0f;
-            editor_trigger_key(editor, key, ctrl);
+            editor_trigger_key(editor, key, ctrl, shift);
         } else if (IsKeyDown(key) && editor->autoclick_key == key) {
             editor->autoclick_down_time += delta_time;
             if (editor->autoclick_down_time > AUTOCLICK_UPPER_THRESHOLD) {
                 editor->autoclick_down_time = AUTOCLICK_LOWER_THRESHOLD;
-                editor_trigger_key(editor, key, ctrl);
+                editor_trigger_key(editor, key, ctrl, shift);
             }
         } else if (editor->autoclick_key == key) {
             editor->autoclick_key = KEY_NULL;
@@ -342,28 +501,49 @@ void editor_input(Editor *editor, float delta_time) {
     }
 }
 
-void editor_render(Editor *editor, int window_width, int window_height, Font *font) {
-    int editor_x = 20;
-    int editor_y = 20;
-    int editor_width = window_width - (2 * editor_x);
-    int editor_height = window_height - (2 * editor_y);
+static void render_cursor(Editor_Cursor_Render_Data data) {
+    Vector2 start = {
+        .x = EDITOR_OFFSET_X + data.line_number_offset + (data.x * data.char_width),
+        .y = EDITOR_OFFSET_Y + ((data.line - data.visual_vertical_offset) * data.line_height)
+    };
+    Vector2 end = {
+        .x = start.x,
+        .y = start.y + data.line_height
+    };
+    Color color = EDITOR_CURSOR_COLOR;
+    color.a = data.alpha;
+    DrawLineEx(start, end, EDITOR_CURSOR_WIDTH, color);
+}
 
-    int lines = 30;
-    int line_height = editor_height / lines;
+static void render_selection(Editor_Selection_Render_Data data) {
+    DrawRectangle(
+        EDITOR_OFFSET_X + data.line_number_offset + (data.start_x * data.char_width),
+        EDITOR_OFFSET_Y + ((data.line - data.visual_vertical_offset) * data.line_height),
+        ((data.end_x - data.start_x) * data.char_width),
+        data.line_height,
+        EDITOR_SELECTION_COLOR
+    );
+}
+
+void editor_render(Editor *editor, int window_width, int window_height, Font *font, float delta_time) {
+    int editor_width = window_width - (2 * EDITOR_OFFSET_X);
+    int editor_height = window_height - (2 * EDITOR_OFFSET_Y);
+
+    int line_height = editor_height / EDITOR_MAX_VISUAL_LINES;
     int char_width = line_height * 0.6;
 
-    DrawRectangle(editor_x, editor_y, editor_width, editor_height, EDITOR_BG_COLOR);
+    DrawRectangle(EDITOR_OFFSET_X, EDITOR_OFFSET_Y, editor_width, editor_height, EDITOR_BG_COLOR);
 
     char line_number_str[5];
     int line_number_offset = (5 * char_width);
 
-    if (editor->cursor_line > (editor->visual_vertical_offset + lines - 1)) {
-        editor->visual_vertical_offset = editor->cursor_line - lines + 1;
+    if (editor->cursor_line > (editor->visual_vertical_offset + EDITOR_MAX_VISUAL_LINES - 1)) {
+        editor->visual_vertical_offset = editor->cursor_line - EDITOR_MAX_VISUAL_LINES + 1;
     } else if (editor->cursor_line < editor->visual_vertical_offset) {
         editor->visual_vertical_offset = editor->cursor_line;
     }
 
-    for (int i = 0; i < lines; i++) {
+    for (int i = 0; i < EDITOR_MAX_VISUAL_LINES; i++) {
         int line_idx = editor->visual_vertical_offset + i;
 
         bool rest_is_comment = false;
@@ -374,7 +554,10 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
         int line_number_str_len = strlen(line_number_str);
 
         for (int j = 0; j < line_number_str_len; j++) {
-            Vector2 position = { editor_x + (j * char_width), editor_y + (i * line_height) };
+            Vector2 position = {
+                EDITOR_OFFSET_X + (j * char_width),
+                EDITOR_OFFSET_Y + (i * line_height)
+            };
             DrawTextCodepoint(*font, line_number_str[j], position, line_height, EDITOR_LINENUMBER_COLOR);
         }
 
@@ -441,23 +624,64 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
             }
 
             Vector2 position = {
-                editor_x + line_number_offset  + (j * char_width),
-                editor_y + (i * line_height)
+                EDITOR_OFFSET_X + line_number_offset  + (j * char_width),
+                EDITOR_OFFSET_Y + (i * line_height)
             };
 
             DrawTextCodepoint(*font, c, position, line_height, color);
         }
     }
 
-    DrawRectangle(
-        editor_x + line_number_offset + (editor->cursor_x * char_width),
-        editor_y + ((editor->cursor_line - editor->visual_vertical_offset) * line_height),
-        char_width,
-        line_height,
-        EDITOR_CURSOR_COLOR
-    );
-}
+    if (editor_selection_active(editor)) {
+        Editor_Selection_Data selection_data = editor_get_selection_data(editor);
+        Editor_Selection_Render_Data selection_render_data = {
+            .line = selection_data.start_line,
+            .line_number_offset = line_number_offset,
+            .visual_vertical_offset = editor->visual_vertical_offset,
+            .start_x = selection_data.start_x,
+            .end_x = 0, // might differ in first selection render
+            .line_height = line_height,
+            .char_width = char_width
+        };
+        if (selection_data.start_line == selection_data.end_line) {
+            selection_render_data.start_x = selection_data.start_x;
+            selection_render_data.end_x = selection_data.end_x;
+            render_selection(selection_render_data);
+        } else {
+            selection_render_data.start_x = selection_data.start_x;
+            selection_render_data.end_x = strlen(editor->lines[selection_render_data.line]);
+            render_selection(selection_render_data);
 
+            selection_render_data.start_x = 0;
+            for (int i = selection_data.start_line + 1; i < selection_data.end_line; i++) {
+                selection_render_data.line = i;
+                selection_render_data.end_x = strlen(editor->lines[i]);
+                render_selection(selection_render_data);
+            }
+
+            selection_render_data.line = selection_data.end_line;
+            selection_render_data.start_x = 0;
+            selection_render_data.end_x = selection_data.end_x;
+            render_selection(selection_render_data);
+        }
+    }
+    editor->cursor_anim_time = editor->cursor_anim_time + (delta_time * EDITOR_CURSOR_ANIMATION_SPEED);
+    float pi2 = PI * 2.0f;
+    if (editor->cursor_anim_time > pi2) {
+        editor->cursor_anim_time -= pi2;
+    }
+    float alpha = (cos(editor->cursor_anim_time) + 1.0) * 127.5;
+    Editor_Cursor_Render_Data cursor_data = {
+        .line = editor->cursor_line,
+        .line_number_offset = line_number_offset,
+        .visual_vertical_offset = editor->visual_vertical_offset,
+        .x = editor->cursor_x,
+        .line_height = line_height,
+        .char_width = char_width,
+        .alpha = alpha
+    };
+    render_cursor(cursor_data);
+}
 
 void editor_free(Editor *editor) {
     free(editor);

@@ -71,6 +71,21 @@ int main (int argc, char **argv) {
     birdsing_textures[1] = LoadTexture("textures/birdsing1.png");
     birdsing_textures[2] = LoadTexture("textures/birdsing2.png");
     birdsing_textures[3] = LoadTexture("textures/birdsing3.png");
+    Texture2D nonscalebird_textures[bird_tex_amount];
+    nonscalebird_textures[0] = LoadTexture("textures/nonscalebird0.png");
+    nonscalebird_textures[1] = LoadTexture("textures/nonscalebird1.png");
+    nonscalebird_textures[2] = LoadTexture("textures/nonscalebird2.png");
+    nonscalebird_textures[3] = LoadTexture("textures/nonscalebird3.png");
+    Texture2D nonscalebirdsing_textures[bird_tex_amount];
+    nonscalebirdsing_textures[0] = LoadTexture("textures/nonscalebirdsing0.png");
+    nonscalebirdsing_textures[1] = LoadTexture("textures/nonscalebirdsing1.png");
+    nonscalebirdsing_textures[2] = LoadTexture("textures/nonscalebirdsing2.png");
+    nonscalebirdsing_textures[3] = LoadTexture("textures/nonscalebirdsing3.png");
+    Texture2D unusedbird_textures[bird_tex_amount];
+    unusedbird_textures[0] = LoadTexture("textures/unusedbird0.png");
+    unusedbird_textures[1] = LoadTexture("textures/unusedbird1.png");
+    unusedbird_textures[2] = LoadTexture("textures/unusedbird2.png");
+    unusedbird_textures[3] = LoadTexture("textures/unusedbird3.png");
     float bird_anim_rate = 0.1;
     Bird birds[bird_amount];
     for (int i = 0; i < bird_amount; i++) {
@@ -98,6 +113,9 @@ int main (int argc, char **argv) {
     Font font = LoadFont("Consolas.ttf");
 
     char *filename = argv[1];
+
+    uint16_t used_notes = ~0;
+    uint16_t current_scale = ~0;
 
     while (!WindowShouldClose()) {
         float delta_time = GetFrameTime();
@@ -144,6 +162,7 @@ int main (int argc, char **argv) {
                         exit(1);
                     }
                     birds_active = true;
+                    used_notes = compiler_result->used_notes;
                     editor_active = false;
                     break;
                 default:
@@ -173,10 +192,13 @@ int main (int argc, char **argv) {
                 bird->anim_time = 0.0f;
                 bird->tex = (bird->tex + 1) % bird_tex_amount;
             }
+            int c_offset_from_a = 3;
+            int offset_to_avoid_negatives = 96;
+            int bird_note = (bird_idx + c_offset_from_a) % 12;
+            bool unused = (used_notes & (1 << bird_note)) == 0;
             bool is_singing;
-            if (birds_active && is_synthesizer_sound_playing(current_sound)) {
-                int c_offset_from_a = 3;
-                int offset_to_avoid_negatives = 96;
+            if (!unused && birds_active && is_synthesizer_sound_playing(current_sound)) {
+                current_scale = current_sound->tone.scale;
                 if (current_sound->tone.note == SILENCE) {
                     is_singing = false;
                 } else {
@@ -189,6 +211,7 @@ int main (int argc, char **argv) {
             } else {
                 is_singing = false;
             }
+            bool in_scale = (current_scale & (1 << bird_note)) != 0;
             int y_offset = (window_height / 3);
             if (bird_idx >= bird_row_amount) {
                 y_offset *= 2;
@@ -204,15 +227,25 @@ int main (int argc, char **argv) {
             float rotation = 0.0f;
             Texture2D *texture;
             if (is_singing) {
-                texture = &birdsing_textures[bird->tex];
+                if (in_scale) {
+                    texture = &birdsing_textures[bird->tex];
+                } else {
+                    texture = &nonscalebirdsing_textures[bird->tex];
+                }
+            } else if (!unused) {
+                if (in_scale) {
+                    texture = &bird_textures[bird->tex];
+                } else {
+                    texture = &nonscalebird_textures[bird->tex];
+                }
             } else {
-                texture = &bird_textures[bird->tex];
+                texture = &unusedbird_textures[bird->tex];
             }
             DrawTextureEx(*texture, position, rotation, bird_scale, WHITE);
         }
 
         if (editor_active) {
-            editor_render(editor, window_width, window_height, &font);
+            editor_render(editor, window_width, window_height, &font, delta_time);
         }
 
         if (console_active) {
