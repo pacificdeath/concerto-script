@@ -130,7 +130,7 @@ int main (int argc, char **argv) {
                 console_active = false;
             }
         } else if (editor_active && !console_active) {
-            editor_input(editor, delta_time);
+            editor_input(editor, window_width, window_height, delta_time);
             if (editor->command != EDITOR_COMMAND_NONE) {
                 char *data[editor->line_count];
                 for (int i = 0; i < editor->line_count; i++) {
@@ -199,11 +199,11 @@ int main (int argc, char **argv) {
             bool is_singing;
             if (!unused && birds_active && is_synthesizer_sound_playing(current_sound)) {
                 current_scale = current_sound->tone.scale;
-                if (current_sound->tone.note == SILENCE) {
+                if (current_sound->tone.start_note == SILENCE) {
                     is_singing = false;
                 } else {
                     is_singing = (
-                        current_sound->tone.note
+                        current_sound->tone.start_note
                         + offset_to_avoid_negatives
                         - c_offset_from_a
                     ) % 12 == bird_idx;

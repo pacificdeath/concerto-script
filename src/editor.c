@@ -5,16 +5,18 @@
 #include "raylib.h"
 
 #define EDITOR_MAX_VISUAL_LINES 30
-#define EDITOR_OFFSET_X 20
-#define EDITOR_OFFSET_Y 20
+#define EDITOR_WINDOW_OFFSET_X 20
+#define EDITOR_WINDOW_OFFSET_Y 20
 #define EDITOR_FILENAME_MAX_LENGTH 256
 #define EDITOR_LINE_CAPACITY 256
 #define EDITOR_LINE_MAX_LENGTH 256
+#define EDITOR_LINE_NUMBER_PADDING 5
 #define AUTO_CLICKABLE_KEYS_AMOUNT 6
 #define AUTOCLICK_LOWER_THRESHOLD 0.3F
 #define AUTOCLICK_UPPER_THRESHOLD 0.33F
 #define EDITOR_CURSOR_WIDTH 3
 #define EDITOR_CURSOR_ANIMATION_SPEED 10.0f
+#define EDITOR_SCROLL_MULTIPLIER 3
 #define EDITOR_BG_COLOR (Color) { 0, 0, 0, 215 }
 #define EDITOR_NORMAL_COLOR (Color) { 255, 255, 255, 255 }
 #define EDITOR_PLAY_COLOR (Color) { 0, 255, 0, 255 }
@@ -23,7 +25,7 @@
 #define EDITOR_PAREN_COLOR (Color) { 255, 255, 0, 255 }
 #define EDITOR_SPACE_COLOR (Color) { 255, 255, 255, 32 }
 #define EDITOR_CURSOR_COLOR (Color) { 255, 0, 255, 255 }
-#define EDITOR_SELECTION_COLOR (Color) { 0, 255, 0, 127 }
+#define EDITOR_SELECTION_COLOR (Color) { 0, 255, 255, 64 }
 #define EDITOR_LINENUMBER_COLOR (Color) { 127, 127, 127, 255 }
 #define EDITOR_COMMENT_COLOR (Color) { 255, 0, 255, 127 }
 
@@ -76,11 +78,40 @@ typedef struct Editor_Selection_Data {
     int end_x;
 } Editor_Selection_Data;
 
+int editor_width(int window_width) {
+    return window_width - (2 * EDITOR_WINDOW_OFFSET_X);
+}
+
+int editor_height(int window_height) {
+    return window_height - (2 * EDITOR_WINDOW_OFFSET_Y);
+}
+
+int editor_line_height(int editor_size_y) {
+    return editor_size_y / EDITOR_MAX_VISUAL_LINES;
+}
+
+int editor_char_width(int line_height) {
+    return line_height * 0.6;
+}
+
+int editor_line_number_padding(int char_width) {
+    return char_width * EDITOR_LINE_NUMBER_PADDING;
+}
+
+static void editor_snap_visual_vertical_offset_to_cursor(Editor *editor) {
+    if (editor->cursor_line > (editor->visual_vertical_offset + EDITOR_MAX_VISUAL_LINES - 1)) {
+        editor->visual_vertical_offset = editor->cursor_line - EDITOR_MAX_VISUAL_LINES + 1;
+    } else if (editor->cursor_line < editor->visual_vertical_offset) {
+        editor->visual_vertical_offset = editor->cursor_line;
+    }
+}
+
 static void editor_set_cursor_x(Editor *editor, int x) {
     editor->cursor_x = x;
     editor->selection_x = x;
     editor->selection_line = editor->cursor_line;
     editor->cursor_anim_time = 0.0;
+    editor_snap_visual_vertical_offset_to_cursor(editor);
 }
 
 static void editor_set_cursor_line(Editor *editor, int line) {
@@ -88,16 +119,19 @@ static void editor_set_cursor_line(Editor *editor, int line) {
     editor->selection_line = line;
     editor->selection_x = editor->cursor_x;
     editor->cursor_anim_time = 0.0;
+    editor_snap_visual_vertical_offset_to_cursor(editor);
 }
 
 static void editor_set_selection_x(Editor *editor, int x) {
     editor->cursor_x = x;
     editor->cursor_anim_time = 0.0;
+    editor_snap_visual_vertical_offset_to_cursor(editor);
 }
 
 static void editor_set_selection_line(Editor *editor, int line) {
     editor->cursor_line = line;
     editor->cursor_anim_time = 0.0;
+    editor_snap_visual_vertical_offset_to_cursor(editor);
 }
 
 static bool editor_selection_active(Editor *editor) {
@@ -151,7 +185,7 @@ static bool editor_delete_selection(Editor *editor) {
         }
         str_buffer[i] = '\0';
         strcat(editor->lines[selection_data.start_line], str_buffer);
-        for (i = selection_data.start_line + 1; i < editor->line_count - 1; i++) {
+        for (i = selection_data.start_line + 1; i < editor->line_count; i++) {
             int copy_line = i + delete_amount;
             if (copy_line >= editor->line_count - 1) {
                 editor->lines[i][0] = '\0';
@@ -422,31 +456,75 @@ void editor_save_file(Editor *editor, char *filename) {
     fclose(file);
 }
 
-void editor_input(Editor *editor, float delta_time) {
+void editor_input(Editor *editor, int window_width, int window_height, float delta_time) {
+    float scroll = GetMouseWheelMove();
+    if (scroll != 0.0f) {
+        editor->visual_vertical_offset -= (scroll * EDITOR_SCROLL_MULTIPLIER);
+        if (editor->visual_vertical_offset < 0) {
+            editor->visual_vertical_offset = 0;
+        } else if (editor->visual_vertical_offset > editor->line_count - 1) {
+            editor->visual_vertical_offset = editor->line_count - 1;
+        }
+    }
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        Vector2 mouse_pos = GetMousePosition();
+        mouse_pos.x -= EDITOR_WINDOW_OFFSET_X;
+        mouse_pos.y -= EDITOR_WINDOW_OFFSET_Y;
+        int editor_w = editor_width(window_width);
+        int editor_h = editor_height(window_height);
+        if (mouse_pos.x < 0 ||
+            mouse_pos.y < 0 ||
+            mouse_pos.x > editor_w ||
+            mouse_pos.x > editor_h) {
+            return;
+        }
+        int line_height = editor_line_height(editor_h);
+        int requested_line = (int)(mouse_pos.y / line_height);
+        requested_line += editor->visual_vertical_offset;
+        if (requested_line >= editor->line_count) {
+            requested_line = editor->line_count - 1;
+        }
+        int char_width = editor_char_width(line_height);
+        int requested_char = roundf((mouse_pos.x / char_width) - EDITOR_LINE_NUMBER_PADDING);
+        int len = strlen(editor->lines[requested_line]);
+        if (requested_char < 0) {
+            requested_char = 0;
+        }
+        if (requested_char >= len) {
+            requested_char = len;
+        }
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            editor_set_cursor_line(editor, requested_line);
+            editor_set_cursor_x(editor, requested_char);
+        } else {
+            editor_set_selection_line(editor, requested_line);
+            editor_set_selection_x(editor, requested_char);
+        }
+        return;
+    }
     if (ctrl && IsKeyPressed(KEY_P)) {
         editor->command = EDITOR_COMMAND_PLAY;
         return;
     }
-    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     for (char c = 32; c < 127; c++) {
         if (IsKeyPressed(c) && editor->cursor_x < EDITOR_LINE_MAX_LENGTH - 2 && editor->cursor_x < EDITOR_LINE_MAX_LENGTH - 1) {
             if (shift) {
                 switch (c) {
                 case '1':
                     editor_add_char(editor, '!');
-                    break;
+                    return;
                 case '3':
                     editor_add_char(editor, '#');
-                    break;
+                    return;
                 case '9':
                     editor_add_char(editor, '(');
-                    break;
+                    return;
                 case '0':
                     editor_add_char(editor, ')');
-                    break;
+                    return;
                 }
-                continue;
             } else {
                 editor_add_char(editor, c);
             }
@@ -456,15 +534,19 @@ void editor_input(Editor *editor, float delta_time) {
     }
     if (IsKeyPressed(KEY_KP_ADD)) {
         editor_add_char(editor, '+');
+        return;
     }
     if (IsKeyPressed(KEY_KP_SUBTRACT)) {
         editor_add_char(editor, '-');
+        return;
     }
     if (IsKeyPressed(KEY_KP_MULTIPLY)) {
         editor_add_char(editor, '*');
+        return;
     }
     if (IsKeyPressed(KEY_KP_DIVIDE)) {
         editor_add_char(editor, '/');
+        return;
     }
     if (IsKeyPressed(KEY_TAB)) {
         int line_len = strlen(editor->lines[editor->cursor_line]);
@@ -481,6 +563,7 @@ void editor_input(Editor *editor, float delta_time) {
                 editor_add_char(editor, ' ');
             }
         }
+        return;
     }
     for (int i = 0; i < AUTO_CLICKABLE_KEYS_AMOUNT; i += 1) {
         int key = editor->auto_clickable_keys[i];
@@ -503,8 +586,8 @@ void editor_input(Editor *editor, float delta_time) {
 
 static void render_cursor(Editor_Cursor_Render_Data data) {
     Vector2 start = {
-        .x = EDITOR_OFFSET_X + data.line_number_offset + (data.x * data.char_width),
-        .y = EDITOR_OFFSET_Y + ((data.line - data.visual_vertical_offset) * data.line_height)
+        .x = EDITOR_WINDOW_OFFSET_X + data.line_number_offset + (data.x * data.char_width),
+        .y = EDITOR_WINDOW_OFFSET_Y + ((data.line - data.visual_vertical_offset) * data.line_height)
     };
     Vector2 end = {
         .x = start.x,
@@ -517,8 +600,8 @@ static void render_cursor(Editor_Cursor_Render_Data data) {
 
 static void render_selection(Editor_Selection_Render_Data data) {
     DrawRectangle(
-        EDITOR_OFFSET_X + data.line_number_offset + (data.start_x * data.char_width),
-        EDITOR_OFFSET_Y + ((data.line - data.visual_vertical_offset) * data.line_height),
+        EDITOR_WINDOW_OFFSET_X + data.line_number_offset + (data.start_x * data.char_width),
+        EDITOR_WINDOW_OFFSET_Y + ((data.line - data.visual_vertical_offset) * data.line_height),
         ((data.end_x - data.start_x) * data.char_width),
         data.line_height,
         EDITOR_SELECTION_COLOR
@@ -526,22 +609,16 @@ static void render_selection(Editor_Selection_Render_Data data) {
 }
 
 void editor_render(Editor *editor, int window_width, int window_height, Font *font, float delta_time) {
-    int editor_width = window_width - (2 * EDITOR_OFFSET_X);
-    int editor_height = window_height - (2 * EDITOR_OFFSET_Y);
+    int editor_w = editor_width(window_width);
+    int editor_h = editor_height(window_height);
 
-    int line_height = editor_height / EDITOR_MAX_VISUAL_LINES;
-    int char_width = line_height * 0.6;
+    int line_height = editor_line_height(editor_h);
+    int char_width = editor_char_width(line_height);
 
-    DrawRectangle(EDITOR_OFFSET_X, EDITOR_OFFSET_Y, editor_width, editor_height, EDITOR_BG_COLOR);
+    DrawRectangle(EDITOR_WINDOW_OFFSET_X, EDITOR_WINDOW_OFFSET_Y, editor_w, editor_h, EDITOR_BG_COLOR);
 
-    char line_number_str[5];
-    int line_number_offset = (5 * char_width);
-
-    if (editor->cursor_line > (editor->visual_vertical_offset + EDITOR_MAX_VISUAL_LINES - 1)) {
-        editor->visual_vertical_offset = editor->cursor_line - EDITOR_MAX_VISUAL_LINES + 1;
-    } else if (editor->cursor_line < editor->visual_vertical_offset) {
-        editor->visual_vertical_offset = editor->cursor_line;
-    }
+    char line_number_str[EDITOR_LINE_NUMBER_PADDING];
+    int line_number_padding = editor_line_number_padding(char_width);
 
     for (int i = 0; i < EDITOR_MAX_VISUAL_LINES; i++) {
         int line_idx = editor->visual_vertical_offset + i;
@@ -555,8 +632,8 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
 
         for (int j = 0; j < line_number_str_len; j++) {
             Vector2 position = {
-                EDITOR_OFFSET_X + (j * char_width),
-                EDITOR_OFFSET_Y + (i * line_height)
+                EDITOR_WINDOW_OFFSET_X + (j * char_width),
+                EDITOR_WINDOW_OFFSET_Y + (i * line_height)
             };
             DrawTextCodepoint(*font, line_number_str[j], position, line_height, EDITOR_LINENUMBER_COLOR);
         }
@@ -582,11 +659,14 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
                         editor->word[char_offset] = editor->lines[line_idx][j + char_offset];
                     }
                     editor->word[char_offset] = '\0';
-                    if (strcmp(editor->word, "PLAY") == 0) {
+                    if (strcmp(editor->word, "PLAY") == 0 ||
+                        strcmp(editor->word, "SLIDEUP") == 0 ||
+                        strcmp(editor->word, "SLIDEDOWN") == 0) {
                         color = EDITOR_PLAY_COLOR;
                     } else if (strcmp(editor->word, "WAIT") == 0) {
                         color = EDITOR_WAIT_COLOR;
                     } else if (
+                        strcmp(editor->word, "SEMI") == 0 ||
                         strcmp(editor->word, "BPM") == 0 ||
                         strcmp(editor->word, "DURATION") == 0 ||
                         strcmp(editor->word, "SETDURATION") == 0 ||
@@ -624,8 +704,8 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
             }
 
             Vector2 position = {
-                EDITOR_OFFSET_X + line_number_offset  + (j * char_width),
-                EDITOR_OFFSET_Y + (i * line_height)
+                EDITOR_WINDOW_OFFSET_X + line_number_padding  + (j * char_width),
+                EDITOR_WINDOW_OFFSET_Y + (i * line_height)
             };
 
             DrawTextCodepoint(*font, c, position, line_height, color);
@@ -636,7 +716,7 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
         Editor_Selection_Data selection_data = editor_get_selection_data(editor);
         Editor_Selection_Render_Data selection_render_data = {
             .line = selection_data.start_line,
-            .line_number_offset = line_number_offset,
+            .line_number_offset = line_number_padding,
             .visual_vertical_offset = editor->visual_vertical_offset,
             .start_x = selection_data.start_x,
             .end_x = 0, // might differ in first selection render
@@ -673,7 +753,7 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
     float alpha = (cos(editor->cursor_anim_time) + 1.0) * 127.5;
     Editor_Cursor_Render_Data cursor_data = {
         .line = editor->cursor_line,
-        .line_number_offset = line_number_offset,
+        .line_number_offset = line_number_padding,
         .visual_vertical_offset = editor->visual_vertical_offset,
         .x = editor->cursor_x,
         .line_height = line_height,

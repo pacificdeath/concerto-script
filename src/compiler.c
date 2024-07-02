@@ -19,14 +19,6 @@
             or tones than what is allowed by this thing
 */
 
-#define OCTAVE_OFFSET 12.0f
-#define MAX_OCTAVE 8
-#define A4_OFFSET 48
-#define A4_FREQ 440.0f
-#define MAX_NOTE 50
-#define MIN_NOTE -44
-#define SILENCE (MAX_NOTE + 1)
-
 #define IDENT_MAX_LENGTH 128
 #define MAX_PAREN_NESTING 32
 
@@ -38,19 +30,25 @@ typedef enum Token_Type {
     NUMBER,
     IDENTIFIER,
 
+    SEMI,
     RISE,
     FALL,
-    RISE_SEMI,
-    FALL_SEMI,
     PAREN_OPEN,
     PAREN_CLOSE,
     ASTERISK,
     SLASH,
-
-    // These are all "valid" identifiers
-    // when a custom identifier is encountered
-    // it should not match any of these
-    NOTE, BPM, PLAY, WAIT, DURATION, SETDURATION, SCALE, SETSCALE, REPEAT, DEFINE,
+    NOTE,
+    BPM,
+    PLAY,
+    SLIDEUP,
+    SLIDEDOWN,
+    WAIT,
+    DURATION,
+    SETDURATION,
+    SCALE,
+    SETSCALE,
+    REPEAT,
+    DEFINE,
 
 } Token_Type;
 
@@ -72,6 +70,7 @@ typedef enum Compiler_Error_Type {
     MALLOC_ERROR,
     ERROR_NO_SOUND,
     ERROR_SYNTAX_ERROR,
+    ERROR_INVALID_SEMI,
     ERROR_UNKNOWN_IDENTIFIER,
     ERROR_EXPECTED_IDENTIFIER,
     ERROR_EXPECTED_PAREN_OPEN,
@@ -86,6 +85,7 @@ typedef enum Compiler_Error_Type {
     ERROR_NO_DEFINE_OPENING_PAREN,
     ERROR_NO_DEFINITION_FOUND,
     ERROR_EXPECTED_NUMBER,
+    ERROR_EXPECTED_RISE_OR_FALL,
     ERROR_NOT_A_NUMBER,
     ERROR_NUMBER_TOO_BIG,
     ERROR_NO_MATCHING_OPENING_PAREN,
@@ -116,6 +116,27 @@ typedef struct Compiler_Result {
     uint16_t used_notes;
 } Compiler_Result;
 
+typedef enum Direction {
+    DIRECTION_RISE = 1,
+    DIRECTION_FALL = -1,
+} Direction;
+
+typedef struct Optional_Scale_Offset_Data {
+    Compiler_Result *result;
+    int *token_idx;
+    int current_note;
+    uint16_t current_scale;
+    Direction direction;
+} Optional_Scale_Offset_Data;
+
+typedef struct Tone_Add_Data {
+    Compiler_Result *result;
+    int start_note;
+    int end_note;
+    float duration;
+    uint16_t scale;
+} Tone_Add_Data;
+
 int is_valid_in_identifier (char c) {
     return isalpha(c) || isdigit(c) || c == '_';
 }
@@ -140,6 +161,9 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         break;
     case ERROR_SYNTAX_ERROR:
         sprintf(str_buffer, "This is wrong");
+        break;
+    case ERROR_INVALID_SEMI:
+        sprintf(str_buffer, "\"SEMI\" must be followed\nby one of these:\nSLIDEUP, SLIDEDOWN\nRISE, FALL");
         break;
     case ERROR_UNKNOWN_IDENTIFIER:
         sprintf(str_buffer, "This thing is not at all known");
@@ -179,6 +203,9 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         break;
     case ERROR_EXPECTED_NUMBER:
         sprintf(str_buffer, "There should be a number here");
+        break;
+    case ERROR_EXPECTED_RISE_OR_FALL:
+        sprintf(str_buffer, "There should be either\na \"RISE\" or a \"FALL\" here");
         break;
     case ERROR_NOT_A_NUMBER:
         sprintf(str_buffer, "This should be a number\nbut it is absolutely not");
@@ -280,14 +307,24 @@ static Token *token_add(Compiler_Result *result, Token_Type token_type) {
     return token;
 }
 
-static void tone_add(Compiler_Result *result, int note, float frequency, float duration, uint16_t scale) {
-    Tone* tone = &(result->tones[result->tone_amount]);
-    tone->note = note;
-    tone->frequency = frequency;
-    tone->duration = duration;
-    tone->scale = scale;
-    result->used_notes |= 1 << (note + 96) % 12;
-    (result->tone_amount)++;
+static float note_to_frequency (int semi_offset) {
+    return A4_FREQ * powf(2.0f, (float)semi_offset / OCTAVE_OFFSET);
+}
+
+static void tone_add(Tone_Add_Data data) {
+    float start_frequency = note_to_frequency(data.start_note);
+    float end_frequency = note_to_frequency(data.end_note);
+    Tone* tone = &(data.result->tones[data.result->tone_amount]);
+    tone->start_note = data.start_note;
+    tone->start_frequency = start_frequency;
+    tone->end_note = data.end_note;
+    tone->end_frequency = end_frequency;
+    tone->duration = data.duration;
+    tone->scale = data.scale;
+    if (data.start_note != SILENCE) {
+        data.result->used_notes |= 1 << (data.start_note + 96) % 12;
+    }
+    (data.result->tone_amount)++;
 }
 
 static int char_to_int(char c) {
@@ -388,8 +425,25 @@ static int get_scale(int token_amount, Token *tokens, int *token_ptr, Compiler_E
     return scale;
 }
 
-static float note_to_frequency (int semi_offset) {
-    return A4_FREQ * powf(2.0f, (float)semi_offset / OCTAVE_OFFSET);
+static int parse_optional_scale_offset(Optional_Scale_Offset_Data data) {
+    Token *peek_token_ptr;
+    int offset = 1; // default offset
+    if (peek_token(data.result, (*data.token_idx), 1, &peek_token_ptr) && peek_token_ptr->type == NUMBER) {
+        (*data.token_idx) += 1;
+        offset = peek_token_ptr->value.number;
+    }
+    int note = data.current_note;
+    for (int j = 0; j < offset; j += 1) {
+        note += data.direction;
+        while (true) {
+            int bit_note = 1 << ((note + 96) % 12);
+            if ((bit_note & data.current_scale) == bit_note) {
+                break;
+            }
+            note += data.direction;
+        }
+    }
+    return note;
 }
 
 Compiler_Result *compile(char *data[], int data_len) {
@@ -502,8 +556,14 @@ Compiler_Result *compile(char *data[], int data_len) {
                         ident[j] = line[*i + j];
                     }
                     ident[ident_length] = '\0';
-                    if (strcmp("PLAY", ident) == 0) {
+                    if (strcmp("SEMI", ident) == 0) {
+                        token_add(result, SEMI);
+                    } else if (strcmp("PLAY", ident) == 0) {
                         token_add(result, PLAY);
+                    } else if (strcmp("SLIDEUP", ident) == 0) {
+                        token_add(result, SLIDEUP);
+                    } else if (strcmp("SLIDEDOWN", ident) == 0) {
+                        token_add(result, SLIDEDOWN);
                     } else if (strcmp("WAIT", ident) == 0) {
                         token_add(result, WAIT);
                     } else if (strcmp("BPM", ident) == 0) {
@@ -520,10 +580,6 @@ Compiler_Result *compile(char *data[], int data_len) {
                         token_add(result, RISE);
                     } else if (strcmp("FALL", ident) == 0) {
                         token_add(result, FALL);
-                    } else if (strcmp("SEMIRISE", ident) == 0) {
-                        token_add(result, RISE_SEMI);
-                    } else if (strcmp("SEMIFALL", ident) == 0) {
-                        token_add(result, FALL_SEMI);
                     } else if (strcmp("REPEAT", ident) == 0) {
                         token_add(result, REPEAT);
                     } else if (strcmp("DEFINE", ident) == 0) {
@@ -590,8 +646,25 @@ Compiler_Result *compile(char *data[], int data_len) {
         int setscale_return_location = 0;
         int scale = ~0;
         Token *peek_token_ptr;
+        bool semi_flag = false;
         for (int i = 0; i < result->token_amount; i++) {
             switch (tokens[i].type) {
+            case SEMI: {
+                if (!peek_token(result, i, 1, &peek_token_ptr)) {
+                    return parser_error(result, ERROR_INVALID_SEMI, i);
+                }
+                switch (peek_token_ptr->type) {
+                case SLIDEUP:
+                case SLIDEDOWN:
+                case RISE:
+                case FALL:
+                    break;
+                default:
+                    return parser_error(result, ERROR_INVALID_SEMI, i);
+                    break;
+                }
+                semi_flag = true;
+            } break;
             case BPM:
                 i += 1;
                 if (i < result->token_amount && tokens[i].type == NUMBER) {
@@ -600,15 +673,49 @@ Compiler_Result *compile(char *data[], int data_len) {
                     return parser_error(result, ERROR_EXPECTED_NUMBER, i);
                 }
                 break;
-            case PLAY:
+            case PLAY: {
                 float bpm_play_duration = duration_sec * 240 / bpm;
-                float frequency = note_to_frequency(note);
-                tone_add(result, note, frequency, bpm_play_duration, scale);
-                break;
-            case WAIT:
+                Tone_Add_Data tone_add_data = {
+                    .result = result,
+                    .start_note = note,
+                    .end_note = note,
+                    .duration = bpm_play_duration,
+                    .scale = scale
+                };
+                tone_add(tone_add_data);
+            } break;
+            case SLIDEUP:
+            case SLIDEDOWN: {
+                Optional_Scale_Offset_Data slide_note_data = {
+                    .result = result,
+                    .token_idx = &i,
+                    .current_note = note,
+                    .current_scale = semi_flag ? ~0 : scale,
+                    .direction = (tokens[i].type == SLIDEUP) ? DIRECTION_RISE : DIRECTION_FALL
+                };
+                semi_flag = false;
+                int end_note = parse_optional_scale_offset(slide_note_data);
+                float bpm_slide_duration = duration_sec * 240 / bpm;
+                Tone_Add_Data tone_add_data = {
+                    .result = result,
+                    .start_note = note,
+                    .end_note = end_note,
+                    .duration = bpm_slide_duration,
+                    .scale = scale
+                };
+                tone_add(tone_add_data);
+            } break;
+            case WAIT: {
                 float bpm_wait_duration = duration_sec * 240 / bpm;
-                tone_add(result, SILENCE, 0.0, bpm_wait_duration, scale);
-                break;
+                Tone_Add_Data tone_add_data = {
+                    .result = result,
+                    .start_note = SILENCE,
+                    .end_note = SILENCE,
+                    .duration = bpm_wait_duration,
+                    .scale = scale
+                };
+                tone_add(tone_add_data);
+            } break;
             case SETDURATION:
                 i += 1;
                 float left_hand_side;
@@ -620,7 +727,7 @@ Compiler_Result *compile(char *data[], int data_len) {
                     left_hand_side = duration_sec;
                     break;
                 default:
-                    return parser_error(result, ERROR_NOT_A_NUMBER, i);
+                    return parser_error(result, ERROR_EXPECTED_NUMBER, i);
                 }
                 i += 1;
                 switch (tokens[i].type) {
@@ -660,49 +767,17 @@ Compiler_Result *compile(char *data[], int data_len) {
                 note = tokens[i].value.number;
                 break;
             case RISE:
-                {
-                    int rise_value = 1;
-                    if (peek_token(result, i, 1, &peek_token_ptr) && peek_token_ptr->type == NUMBER) {
-                        i += 1;
-                        rise_value = peek_token_ptr->value.number;
-                    }
-                    for (int j = 0; j < rise_value; j += 1) {
-                        note++;
-                        while (true) {
-                            int bit_note = 1 << ((note + 96) % 12);
-                            if ((bit_note & scale) == bit_note) {
-                                break;
-                            }
-                            note++;
-                        }
-                    }
-                }
-                break;
-            case FALL:
-                {
-                    int fall_value = 1;
-                    if (peek_token(result, i, 1, &peek_token_ptr) && peek_token_ptr->type == NUMBER) {
-                        i += 1;
-                        fall_value = peek_token_ptr->value.number;
-                    }
-                    for (int j = 0; j < fall_value; j += 1) {
-                        note--;
-                        while (true) {
-                            int bit_note = 1 << ((note + 96) % 12);
-                            if ((bit_note & scale) == bit_note) {
-                                break;
-                            }
-                            note--;
-                        }
-                    }
-                }
-                break;
-            case RISE_SEMI:
-                note++;
-                break;
-            case FALL_SEMI:
-                note--;
-                break;
+            case FALL: {
+                Optional_Scale_Offset_Data data = {
+                    .result = result,
+                    .token_idx = &i,
+                    .current_note = note,
+                    .current_scale = semi_flag ? ~0 : scale,
+                    .direction = (tokens[i].type == RISE) ? DIRECTION_RISE : DIRECTION_FALL,
+                };
+                semi_flag = false;
+                note = parse_optional_scale_offset(data);
+            } break;
             case SCALE:
                 if (++i >= result->token_amount || tokens[i].type != IDENTIFIER) {
                     return parser_error(result, ERROR_EXPECTED_IDENTIFIER, i);
