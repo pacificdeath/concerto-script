@@ -1,0 +1,240 @@
+DEFINE AMIN ( SCALE (A B C D E F G) )
+DEFINE AMAJ ( SCALE (A B C# D E F# G#) )
+DURATION 16
+
+DEFINE M1 (
+    AMIN
+    B
+    REPEAT 2 (
+        PLAY FALL
+        PLAY SEMI FALL
+        PLAY RISE
+        PLAY RISE 2
+        PLAY
+        REPEAT 3(WAIT)
+        RISE
+    )
+
+    PLAY FALL
+    PLAY SEMI FALL
+    PLAY RISE
+    PLAY RISE 4
+
+    REPEAT 2 (
+        PLAY FALL
+        PLAY SEMI FALL
+        PLAY RISE
+        PLAY RISE
+    )
+    RISE
+    PLAY REPEAT 3(WAIT)
+)
+
+DEFINE M1A (
+    AMIN
+    A5
+    PLAY WAIT RISE 2
+    PLAY FALL
+
+    DEFINE M1A1 (
+        DURATION 32
+        FALL 2 PLAY RISE PLAY RISE
+        DURATION 16
+        PLAY WAIT FALL
+        PLAY WAIT FALL
+        PLAY WAIT
+    )
+
+    M1A1 RISE PLAY RISE
+    M1A1 RISE PLAY RISE
+    M1A1 SEMI FALL
+    PLAY WAIT SEMI FALL 2
+    PLAY REPEAT 3 (WAIT)
+)
+
+DEFINE M2 (
+    AMIN
+    E5
+    REPEAT 2 (
+        REPEAT 2 (
+            REPEAT 2 (PLAY WAIT RISE)
+            REPEAT 2 (PLAY WAIT)
+            RISE
+            REPEAT 4 (PLAY FALL)
+            DURATION 4
+            PLAY
+            DURATION 16
+            RISE
+        )
+        FALL 2
+    )
+)
+
+DEFINE M1B (
+    AMIN
+    A5
+    REPEAT 2 (PLAY WAIT RISE)
+    PLAY WAIT FALL
+    DURATION 32
+    PLAY RISE
+    PLAY FALL
+    PLAY FALL
+    DURATION 16
+    PLAY WAIT SEMI FALL
+    PLAY WAIT RISE
+    PLAY WAIT FALL 3
+    PLAY WAIT RISE
+    PLAY WAIT FALL 2
+    PLAY WAIT FALL
+    DURATION 4
+    PLAY FALL
+    DURATION 32
+    REPEAT 4 (PLAY RISE PLAY FALL)
+    FALL
+    DURATION 4
+    PLAY
+    DURATION 16
+)
+
+DEFINE M3 (
+    AMAJ
+    REPEAT 2 (
+        A5
+        REPEAT 2 (PLAY WAIT RISE)
+        DURATION 4
+        PLAY FALL 2
+        DURATION 16
+        REPEAT 2 (PLAY WAIT RISE)
+        PLAY WAIT FALL
+        DURATION 32
+        PLAY RISE
+        PLAY FALL
+        PLAY FALL
+        DURATION 16
+        REPEAT 2 (PLAY WAIT FALL)
+        ROUNDS 1 (
+            DURATION 8
+            PLAY RISE
+            DURATION 16
+            REPEAT 2 (PLAY WAIT RISE)
+            REPEAT 2 (PLAY WAIT FALL 2)
+            PLAY WAIT
+        )
+        ROUNDS 2 (
+            PLAY WAIT RISE 3
+            REPEAT 2 (PLAY WAIT FALL 2)
+            PLAY WAIT RISE 3
+            DURATION 4
+            PLAY
+            DURATION 16
+        )
+    )
+)
+
+DEFINE M4 (
+    AMAJ
+    C#6
+
+    REPEAT 2 (
+        REPEAT 2 (
+            PLAY RISE
+            REPEAT 3 (PLAY FALL)
+        )
+
+        PLAY RISE 2
+        PLAY FALL
+        PLAY FALL
+        PLAY
+        ROUNDS 1 (
+            SEMI FALL
+        
+            PLAY RISE
+            PLAY RISE
+            PLAY SEMI FALL 3
+            PLAY FALL 3
+        
+            PLAY SEMI RISE 2
+            PLAY SEMI RISE 2
+            PLAY SEMI FALL 4
+            PLAY RISE 3
+        
+            REPEAT 2 (
+                PLAY SEMI FALL
+                PLAY RISE
+                PLAY RISE
+                PLAY RISE
+            )
+        
+            REPEAT 2 (
+                PLAY SEMI FALL
+                PLAY RISE
+            )
+        )
+        ROUNDS 2 (
+            FALL
+        
+            PLAY RISE
+            PLAY RISE
+            PLAY FALL 2
+            PLAY FALL 2
+        
+            PLAY SEMI RISE 2
+            PLAY SEMI RISE 1
+            PLAY SEMI FALL 3
+            PLAY SEMI RISE 2
+        
+            PLAY RISE
+            PLAY RISE
+            PLAY SEMI FALL 3
+            PLAY SEMI FALL 3
+        
+            PLAY RISE
+            PLAY SEMI RISE 2
+            PLAY SEMI FALL 3
+            PLAY RISE
+        
+            DURATION 4
+            PLAY
+            DURATION 16
+        )
+    )
+)
+
+DEFINE M5 (
+    AMAJ
+    REPEAT 2 (
+        E5
+        REPEAT 4 (PLAY FALL)
+        REPEAT 7 (PLAY RISE)
+        PLAY
+        REPEAT 7 (PLAY FALL)
+        PLAY
+        ROUNDS 1 (
+            REPEAT 7 (PLAY RISE)
+            PLAY SEMI RISE
+            DURATION 8
+            PLAY RISE
+            PLAY
+            DURATION 16
+        )
+        ROUNDS 2 (
+            RISE 2
+            REPEAT 2 (
+                PLAY RISE 2
+                PLAY FALL 4
+                PLAY RISE 2
+                PLAY FALL
+            )
+            DURATION 4
+            PLAY
+            DURATION 16
+        )
+    )
+)
+
+BPM 150
+REPEAT 2 (M1 M1A)
+REPEAT 2 (M2 M1 M1B)
+REPEAT 2 (M3)
+REPEAT 2 (M4)
+REPEAT 2 (M5)

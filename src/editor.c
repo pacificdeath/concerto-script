@@ -22,7 +22,7 @@
 #define EDITOR_PLAY_COLOR (Color) { 0, 255, 0, 255 }
 #define EDITOR_WAIT_COLOR (Color) { 255, 0, 0, 255 }
 #define EDITOR_KEYWORD_COLOR (Color) { 0, 127, 255, 255 }
-#define EDITOR_PAREN_COLOR (Color) { 255, 255, 0, 255 }
+#define EDITOR_PAREN_COLOR (Color) { 255, 192, 0, 255 }
 #define EDITOR_SPACE_COLOR (Color) { 255, 255, 255, 32 }
 #define EDITOR_CURSOR_COLOR (Color) { 255, 0, 255, 255 }
 #define EDITOR_SELECTION_COLOR (Color) { 0, 255, 255, 64 }
@@ -33,6 +33,9 @@ typedef enum Editor_Command {
     EDITOR_COMMAND_NONE,
     EDITOR_COMMAND_PLAY,
 } Editor_Command;
+
+typedef struct Editor_Clipboard {
+} Editor_Clipboard;
 
 typedef struct Editor {
     char lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
@@ -48,6 +51,8 @@ typedef struct Editor {
     int auto_clickable_keys[AUTO_CLICKABLE_KEYS_AMOUNT];
     int visual_vertical_offset;
     float cursor_anim_time;
+    int clipboard_line_count;
+    char clipboard_lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
     Editor_Command command;
 } Editor;
 
@@ -456,6 +461,71 @@ void editor_save_file(Editor *editor, char *filename) {
     fclose(file);
 }
 
+static void editor_set_cursor_x_first_non_whitespace(Editor *editor) {
+    int x;
+    for (x = 0; editor->lines[editor->cursor_line][x] == ' '; x++);
+    editor_set_cursor_x(editor, x);
+}
+
+static void copy_to_clipboard(Editor *editor) {
+    int start_line;
+    int end_line;
+    int start_x;
+    int end_x;
+    if (editor->cursor_line < editor->selection_line) {
+        start_line = editor->cursor_line;
+        start_x = editor->cursor_x;
+        end_line = editor->selection_line;
+        end_x = editor->selection_x;
+    } else if (editor->selection_line < editor->cursor_line) {
+        start_line = editor->selection_line;
+        start_x = editor->selection_x;
+        end_line = editor->cursor_line;
+        end_x = editor->cursor_x;
+    } else {
+        start_line = editor->cursor_line;
+        end_line = editor->cursor_line;
+        if (editor->cursor_x < editor->selection_x) {
+            start_x = editor->cursor_x;
+            end_x = editor->selection_x;
+        } else if (editor->selection_x < editor->cursor_x) {
+            start_x = editor->selection_x;
+            end_x = editor->cursor_x;
+        } else {
+            return;
+        }
+    }
+    editor->clipboard_line_count = 1 + (end_line - start_line);
+    for (int line = 0; line < editor->clipboard_line_count; line++) {
+        int line_len = strlen(editor->lines[line + start_line]);
+        int start = line == 0 ? start_x : 0;
+        int end = line == editor->clipboard_line_count - 1 ? end_x : line_len;
+        int x;
+        for (x = 0; x < end - start; x++) {
+            editor->clipboard_lines[line][x] = editor->lines[line + start_line][x + start];
+        }
+        editor->clipboard_lines[line][x] = '\0';
+    }
+}
+
+static void cut_to_clipboard(Editor *editor) {
+    copy_to_clipboard(editor);
+    editor_delete_selection(editor);
+}
+
+static void paste_clipboard(Editor *editor) {
+    editor_delete_selection(editor);
+    for (int i = 0; i < editor->clipboard_line_count; i++) {
+        int line_len = strlen(editor->clipboard_lines[i]);
+        for (int j = 0; j < line_len; j++) {
+            editor_add_char(editor, editor->clipboard_lines[i][j]);
+        }
+        if (editor->clipboard_line_count > 1 && i < editor->clipboard_line_count - 1) {
+            editor_new_line(editor);
+        }
+    }
+}
+
 void editor_input(Editor *editor, int window_width, int window_height, float delta_time) {
     float scroll = GetMouseWheelMove();
     if (scroll != 0.0f) {
@@ -508,6 +578,18 @@ void editor_input(Editor *editor, int window_width, int window_height, float del
         editor->command = EDITOR_COMMAND_PLAY;
         return;
     }
+    if (ctrl && IsKeyPressed(KEY_C)) {
+        copy_to_clipboard(editor);
+        return;
+    }
+    if (ctrl && IsKeyPressed(KEY_X)) {
+        cut_to_clipboard(editor);
+        return;
+    }
+    if (ctrl && IsKeyPressed(KEY_V)) {
+        paste_clipboard(editor);
+        return;
+    }
     for (char c = 32; c < 127; c++) {
         if (IsKeyPressed(c) && editor->cursor_x < EDITOR_LINE_MAX_LENGTH - 2 && editor->cursor_x < EDITOR_LINE_MAX_LENGTH - 1) {
             if (shift) {
@@ -549,19 +631,77 @@ void editor_input(Editor *editor, int window_width, int window_height, float del
         return;
     }
     if (IsKeyPressed(KEY_TAB)) {
-        int line_len = strlen(editor->lines[editor->cursor_line]);
+        bool selection_active = editor_selection_active(editor);
+        int start_line;
+        int end_line;
+        if (editor->cursor_line < editor->selection_line) {
+            start_line = editor->cursor_line;
+            end_line = editor->selection_line;
+        } else {
+            start_line = editor->selection_line;
+            end_line = editor->cursor_line;
+        }
         bool bad = false;
-        int spaces;
-        for (spaces = 1; (editor->cursor_x + spaces) % 4 != 0; spaces++) {
-            if (line_len + spaces >= EDITOR_LINE_MAX_LENGTH - 2) {
-                bad = true;
-                break;
+        int spaces_len = 1 + (end_line - start_line);
+        int spaces[spaces_len];
+        for (int i = 0; i < spaces_len; i++) {
+            if (selection_active || shift) {
+                editor_set_cursor_line(editor, start_line + i);
+                editor_set_cursor_x_first_non_whitespace(editor);
+            }
+            int line_len = strlen(editor->lines[start_line + i]);
+            if (shift) {
+                if (editor->cursor_x == 0) {
+                    spaces[i] = 0;
+                    continue;
+                }
+                for (
+                    spaces[i] = 1;
+                    spaces[i] < line_len - 1
+                        && editor->lines[start_line + i][spaces[i]] == ' '
+                        && (editor->cursor_x - spaces[i]) % 4 != 0;
+                    spaces[i]++
+                );
+            } else {
+                for (spaces[i] = 1; (editor->cursor_x + spaces[i]) % 4 != 0; spaces[i]++) {
+                    if (line_len + spaces[i] >= EDITOR_LINE_MAX_LENGTH - 2) {
+                        bad = true;
+                        break;
+                    }
+                }
             }
         }
-        if (!bad) {
-            for (int i = 0; i < spaces; i++) {
-                editor_add_char(editor, ' ');
+        if (bad) { return; }
+        if (shift) {
+            for (int i = 0; i < spaces_len; i++) {
+                int line_idx = start_line + i;
+                int line_len = strlen(editor->lines[line_idx]);
+                for (int j = spaces[i]; j < line_len; j++) {
+                    editor->lines[line_idx][j - spaces[i]] = editor->lines[line_idx][j];
+                }
+                editor->lines[line_idx][line_len - spaces[i]] = '\0';
+                editor_set_cursor_x(editor, editor->cursor_x - spaces[i]);
             }
+        } else {
+            if (selection_active) {
+                for (int i = 0; i < spaces_len; i++) {
+                    editor_set_cursor_line(editor, start_line + i);
+                    editor_set_cursor_x(editor, 0);
+                    for (int j = 0; j < spaces[i]; j++) {
+                        editor_add_char(editor, ' ');
+                    }
+                }
+            } else {
+                for (int j = 0; j < spaces[0]; j++) {
+                    editor_add_char(editor, ' ');
+                }
+            }
+        }
+        if (selection_active) {
+            editor->cursor_line = start_line;
+            editor->cursor_x = 0;
+            editor->selection_line = end_line;
+            editor->selection_x = strlen(editor->lines[end_line]);
         }
         return;
     }
@@ -666,18 +806,15 @@ void editor_render(Editor *editor, int window_width, int window_height, Font *fo
                     } else if (strcmp(editor->word, "WAIT") == 0) {
                         color = EDITOR_WAIT_COLOR;
                     } else if (
+                        strcmp(editor->word, "DEFINE") == 0 ||
+                        strcmp(editor->word, "REPEAT") == 0 ||
+                        strcmp(editor->word, "ROUNDS") == 0 ||
                         strcmp(editor->word, "SEMI") == 0 ||
                         strcmp(editor->word, "BPM") == 0 ||
                         strcmp(editor->word, "DURATION") == 0 ||
-                        strcmp(editor->word, "SETDURATION") == 0 ||
                         strcmp(editor->word, "SCALE") == 0 ||
-                        strcmp(editor->word, "SETSCALE") == 0 ||
                         strcmp(editor->word, "RISE") == 0 ||
-                        strcmp(editor->word, "FALL") == 0 ||
-                        strcmp(editor->word, "SEMIRISE") == 0 ||
-                        strcmp(editor->word, "SEMIFALL") == 0 ||
-                        strcmp(editor->word, "DEFINE") == 0 ||
-                        strcmp(editor->word, "REPEAT") == 0) {
+                        strcmp(editor->word, "FALL") == 0) {
                         color = EDITOR_KEYWORD_COLOR;
                     } else {
                         color = EDITOR_NORMAL_COLOR;

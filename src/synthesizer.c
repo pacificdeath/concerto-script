@@ -101,7 +101,9 @@ void synthesizer_run(void *data) {
             for (int frame = 0; frame < frame_count; frame += 1) {
                 float t = (float)frame / (float)(frame_count - 1); // Normalized time (0.0 to 1.0)
                 float current_frequency = (1.0f - t) * synthesizer->sounds[i].tone.start_frequency + t * synthesizer->sounds[i].tone.end_frequency;
-                float sample = sinf(2.0f * PI * current_frequency * frame / sample_rate);
+                // float sample = sinf(2.0f * PI * current_frequency * frame / sample_rate);
+                float x = current_frequency * frame / sample_rate;
+                float sample = 4.0f * fabs(x - floor(x + 0.75f) + 0.25f) - 1.0f;
                 float envelope = 0.5f * (1.0f - cosf(2.0f * PI * frame / (frame_count - 1)));
                 sample *= envelope;
                 for (int k = 0; k < channels; k++) {

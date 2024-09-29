@@ -9,6 +9,33 @@ void sleep(u32 milliseconds) {
     Sleep(milliseconds);
 }
 
+int list_files(char *dir, char *buffer) {
+    buffer[0] = '\0';
+
+    WIN32_FIND_DATA find_data;
+    HANDLE handle = NULL;
+
+    char path[2048];
+
+    sprintf(path, "%s\\*.*", dir);
+    if ((handle = FindFirstFile(path, &find_data)) == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
+    do
+    {
+        if (strcmp(find_data.cFileName, ".") == 0 ||
+            strcmp(find_data.cFileName, "..") == 0 ||
+            find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            continue;
+        }
+        strcat(buffer, find_data.cFileName);
+        strcat(buffer, "\n");
+    }
+    while(FindNextFile(handle, &find_data));
+    FindClose(handle); //Always, Always, clean things up!
+    return 0;
+}
+
 Thread thread_create(void (*thread_function)(void *), void *thread_argument) {
     return (HANDLE)_beginthread(thread_function, 0, thread_argument);
 }

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdint.h>
 
 #include "raylib.h"
 
@@ -20,23 +21,20 @@
 */
 
 #define IDENT_MAX_LENGTH 128
+#define VARIABLE_MAX_COUNT 256
 #define MAX_PAREN_NESTING 32
 
 #define ERROR_MESSAGE_MAX_LEN
 
 typedef enum Token_Type {
     NONE = 0,
-
     NUMBER,
     IDENTIFIER,
-
     SEMI,
     RISE,
     FALL,
     PAREN_OPEN,
     PAREN_CLOSE,
-    ASTERISK,
-    SLASH,
     NOTE,
     BPM,
     PLAY,
@@ -44,12 +42,10 @@ typedef enum Token_Type {
     SLIDEDOWN,
     WAIT,
     DURATION,
-    SETDURATION,
     SCALE,
-    SETSCALE,
     REPEAT,
+    ROUNDS,
     DEFINE,
-
 } Token_Type;
 
 typedef union Token_Value {
@@ -65,9 +61,18 @@ typedef struct Token {
     Token_Value value;
 } Token;
 
+typedef struct Token_Variable {
+    char *ident;
+    int address;
+} Token_Variable;
+
+typedef struct Repetition {
+    int target;
+    int round;
+} Repetition;
+
 typedef enum Compiler_Error_Type {
     NO_ERROR = 0,
-    MALLOC_ERROR,
     ERROR_NO_SOUND,
     ERROR_SYNTAX_ERROR,
     ERROR_INVALID_SEMI,
@@ -75,27 +80,14 @@ typedef enum Compiler_Error_Type {
     ERROR_EXPECTED_IDENTIFIER,
     ERROR_EXPECTED_PAREN_OPEN,
     ERROR_NO_MATCHING_CLOSING_PAREN,
-    ERROR_EXPECTED_SCALE_REF_OR_INLINE,
     ERROR_NO_SCALE_IDENTIFIER,
-    ERROR_NO_SCALE_OPENING_PAREN,
-    ERROR_SCALE_DEFINITION_NOT_FOUND,
-    ERROR_NO_REPEAT_NUMBER,
-    ERROR_NO_REPEAT_OPENING_PAREN,
-    ERROR_NO_DEFINE_IDENTIFIER,
-    ERROR_NO_DEFINE_OPENING_PAREN,
-    ERROR_NO_DEFINITION_FOUND,
     ERROR_EXPECTED_NUMBER,
-    ERROR_EXPECTED_RISE_OR_FALL,
-    ERROR_NOT_A_NUMBER,
     ERROR_NUMBER_TOO_BIG,
     ERROR_NO_MATCHING_OPENING_PAREN,
     ERROR_NESTING_TOO_DEEP,
     ERROR_SCALE_CAN_ONLY_HAVE_NOTES,
     ERROR_SCALE_CAN_NOT_BE_EMPTY,
     ERROR_INTERNAL,
-    ERROR_TOO_LAZY_TO_NAME_THIS_ERROR,
-    ERROR_DIVIDE_BY_ZERO,
-    ERROR_EXPECTED_SLASH_OR_ASTERISK,
 } Compiler_Error_Type;
 
 typedef struct Compiler_Error {
@@ -113,7 +105,7 @@ typedef struct Compiler_Result {
     Token *tokens;
     int tone_amount;
     Tone *tones;
-    uint16_t used_notes;
+    bool used_notes[96];
 } Compiler_Result;
 
 typedef enum Direction {
@@ -169,46 +161,16 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         sprintf(str_buffer, "This thing is not at all known");
         break;
     case ERROR_EXPECTED_IDENTIFIER:
-        sprintf(str_buffer, "Expected an identifier before this");
+        sprintf(str_buffer, "Expected an identifier after this");
         break;
     case ERROR_EXPECTED_PAREN_OPEN:
-        sprintf(str_buffer, "Expected a \'(\' before this");
-        break;
-    case ERROR_EXPECTED_SCALE_REF_OR_INLINE:
-        sprintf(str_buffer, "Expected a scale or a\nreference to a SCALE thing before this");
+        sprintf(str_buffer, "Expected a \'(\' after this");
         break;
     case ERROR_NO_SCALE_IDENTIFIER:
         sprintf(str_buffer, "You should come up with a\nname for the scale here");
         break;
-    case ERROR_NO_SCALE_OPENING_PAREN:
-        sprintf(str_buffer, "You should put the scale\ninside \'(\' and \')\'");
-        break;
-    case ERROR_SCALE_DEFINITION_NOT_FOUND:
-        sprintf(str_buffer, "You have not yet defined\na scale by that name");
-        break;
-    case ERROR_NO_REPEAT_NUMBER:
-        sprintf(str_buffer, "You should put the number\nof repeats around here");
-        break;
-    case ERROR_NO_REPEAT_OPENING_PAREN:
-        sprintf(str_buffer, "You should put the instructions\nto be repeated inside \'(\' and \')\'");
-        break;
-    case ERROR_NO_DEFINE_IDENTIFIER:
-        sprintf(str_buffer, "You should come up with a\nname for the definition here");
-        break;
-    case ERROR_NO_DEFINE_OPENING_PAREN:
-        sprintf(str_buffer, "You should put the instructions\nof the definition inside \'(\' and \')\'");
-        break;
-    case ERROR_NO_DEFINITION_FOUND:
-        sprintf(str_buffer, "You have not yet defined\nany sections by that name");
-        break;
     case ERROR_EXPECTED_NUMBER:
-        sprintf(str_buffer, "There should be a number here");
-        break;
-    case ERROR_EXPECTED_RISE_OR_FALL:
-        sprintf(str_buffer, "There should be either\na \"RISE\" or a \"FALL\" here");
-        break;
-    case ERROR_NOT_A_NUMBER:
-        sprintf(str_buffer, "This should be a number\nbut it is absolutely not");
+        sprintf(str_buffer, "There should be a number after this");
         break;
     case ERROR_NUMBER_TOO_BIG:
         sprintf(str_buffer, "This number is way too large");
@@ -227,12 +189,6 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         break;
     case ERROR_SCALE_CAN_NOT_BE_EMPTY:
         sprintf(str_buffer, "A scale can not be completely empty");
-        break;
-    case ERROR_DIVIDE_BY_ZERO:
-        sprintf(str_buffer, "You can not divide things by zero");
-        break;
-    case ERROR_EXPECTED_SLASH_OR_ASTERISK:
-        sprintf(str_buffer, "Expected a \'/\' or maybe a \'*\'");
         break;
     case ERROR_INTERNAL:
         sprintf(str_buffer, "Internal error");
@@ -321,8 +277,10 @@ static void tone_add(Tone_Add_Data data) {
     tone->end_frequency = end_frequency;
     tone->duration = data.duration;
     tone->scale = data.scale;
+    unsigned int unsigned_note_from_c0 = (data.start_note + 57);
+    tone->octave = unsigned_note_from_c0 / 12;
     if (data.start_note != SILENCE) {
-        data.result->used_notes |= 1 << (data.start_note + 96) % 12;
+        data.result->used_notes[unsigned_note_from_c0] = true;
     }
     (data.result->tone_amount)++;
 }
@@ -476,7 +434,9 @@ Compiler_Result *compile(char *data[], int data_len) {
     result->tone_amount = 0;
     result->tones = NULL;
 
-    result->used_notes = 0;
+    for (int i = 0; i < 96; i++) {
+        result->used_notes[i] = false;
+    }
 
     // start lexer
     {
@@ -517,12 +477,6 @@ Compiler_Result *compile(char *data[], int data_len) {
                         token->value.number = paren_open_address;
                         result->tokens[paren_open_address].value.number = token->address;
                     }
-                    break;
-                case '*':
-                    token_add(result, ASTERISK);
-                    break;
-                case '/':
-                    token_add(result, SLASH);
                     break;
                 default:
                     {
@@ -570,18 +524,16 @@ Compiler_Result *compile(char *data[], int data_len) {
                         token_add(result, BPM);
                     } else if (strcmp("DURATION", ident) == 0) {
                         token_add(result, DURATION);
-                    } else if (strcmp("SETDURATION", ident) == 0) {
-                        token_add(result, SETDURATION);
                     } else if (strcmp("SCALE", ident) == 0) {
                         token_add(result, SCALE);
-                    } else if (strcmp("SETSCALE", ident) == 0) {
-                        token_add(result, SETSCALE);
                     } else if (strcmp("RISE", ident) == 0) {
                         token_add(result, RISE);
                     } else if (strcmp("FALL", ident) == 0) {
                         token_add(result, FALL);
                     } else if (strcmp("REPEAT", ident) == 0) {
                         token_add(result, REPEAT);
+                    } else if (strcmp("ROUNDS", ident) == 0) {
+                        token_add(result, ROUNDS);
                     } else if (strcmp("DEFINE", ident) == 0) {
                         token_add(result, DEFINE);
                     } else {
@@ -616,6 +568,9 @@ Compiler_Result *compile(char *data[], int data_len) {
         }
     }
 
+    Token_Variable variables[VARIABLE_MAX_COUNT] = {0};
+    int variable_count = 0;
+
     result->tones = (Tone *)malloc(sizeof(Tone) * 4096);
     if (result->tones == NULL) {
         printf("malloc failed for tones\n");
@@ -631,9 +586,10 @@ Compiler_Result *compile(char *data[], int data_len) {
         #endif
         Token* tokens = result->tokens;
         int nest_idx = -1;
-        int nest_repetitions[16];
+        Repetition nest_repetitions[16];
         for (int i = 0; i < 16; i++) {
-            nest_repetitions[i] = -1;
+            nest_repetitions[i].target = -1;
+            nest_repetitions[i].round = 0;
         }
         int bpm = 125;
         int i_return_positions[32];
@@ -641,9 +597,7 @@ Compiler_Result *compile(char *data[], int data_len) {
         int note = 0;
         float duration_sec = 240 / bpm;
 
-        // TODO: scale / setscale / define must never be nested
-        bool setting_scale = false;
-        int setscale_return_location = 0;
+        // TODO: scale / scale / define must never be nested
         int scale = ~0;
         Token *peek_token_ptr;
         bool semi_flag = false;
@@ -680,7 +634,7 @@ Compiler_Result *compile(char *data[], int data_len) {
                     .start_note = note,
                     .end_note = note,
                     .duration = bpm_play_duration,
-                    .scale = scale
+                    .scale = scale,
                 };
                 tone_add(tone_add_data);
             } break;
@@ -716,52 +670,12 @@ Compiler_Result *compile(char *data[], int data_len) {
                 };
                 tone_add(tone_add_data);
             } break;
-            case SETDURATION:
+            case DURATION:
                 i += 1;
-                float left_hand_side;
-                switch (tokens[i].type) {
-                case NUMBER:
-                    left_hand_side = (float)tokens[i].value.number;
-                    break;
-                case DURATION:
-                    left_hand_side = duration_sec;
-                    break;
-                default:
+                if (tokens[i].type != NUMBER) {
                     return parser_error(result, ERROR_EXPECTED_NUMBER, i);
                 }
-                i += 1;
-                switch (tokens[i].type) {
-                case ASTERISK:
-                case SLASH:
-                    break;
-                default:
-                    return parser_error(result, ERROR_EXPECTED_SLASH_OR_ASTERISK, i);
-                }
-                i += 1;
-                float right_hand_side;
-                switch (tokens[i].type) {
-                case NUMBER:
-                    right_hand_side = (float)tokens[i].value.number;
-                    break;
-                case DURATION:
-                    right_hand_side = duration_sec;
-                    break;
-                default:
-                    return parser_error(result, ERROR_NOT_A_NUMBER, i);
-                }
-                switch (tokens[i - 1].type) {
-                case ASTERISK:
-                    duration_sec = left_hand_side * right_hand_side;
-                    break;
-                case SLASH:
-                    if (right_hand_side == 0) {
-                        return parser_error(result, ERROR_DIVIDE_BY_ZERO, i - 1);
-                    }
-                    duration_sec = left_hand_side / right_hand_side;
-                    break;
-                default:
-                    return parser_error(result, ERROR_SYNTAX_ERROR, i - 1);
-                }
+                duration_sec = 1.0f / (float)tokens[i].value.number;
                 break;
             case NOTE:
                 note = tokens[i].value.number;
@@ -779,128 +693,118 @@ Compiler_Result *compile(char *data[], int data_len) {
                 note = parse_optional_scale_offset(data);
             } break;
             case SCALE:
-                if (++i >= result->token_amount || tokens[i].type != IDENTIFIER) {
-                    return parser_error(result, ERROR_EXPECTED_IDENTIFIER, i);
-                }
-                if (++i >= result->token_amount || tokens[i].type != PAREN_OPEN) {
+                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != PAREN_OPEN) {
                     return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
                 }
-                if (setting_scale) {
-                    i += 1;
-                    Compiler_Error_Type scale_error = NO_ERROR;
-                    scale = get_scale(result->token_amount, tokens, &i, &scale_error);
-                    if (scale_error != NO_ERROR) {
-                        return parser_error(result, scale_error, i);
-                    }
-                    setting_scale = false;
-                    i = setscale_return_location;
-                } else {
-                    i = tokens[i].value.number; // go to ')'
-                }
-                break;
-            case SETSCALE:
-                if (i >= result->token_amount - 1) {
-                    return parser_error(result, ERROR_EXPECTED_SCALE_REF_OR_INLINE, i);
-                }
-                switch (tokens[i + 1].type) {
-                case PAREN_OPEN:
-                    if (++i >= result->token_amount || tokens[i].type != PAREN_OPEN) {
-                        return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                    }
-                    i += 1;
-                    Compiler_Error_Type scale_error = NO_ERROR;
-                    scale = get_scale(result->token_amount, tokens, &i, &scale_error);
-                    if (scale_error != NO_ERROR) {
-                        return parser_error(result, scale_error, i);
-                    }
-                    break;
-                case IDENTIFIER:
-                    i += 1;
-                    setting_scale = true;
-                    setscale_return_location = i;
-                    bool scale_found = false;
-                    for (int j = 0; j < result->token_amount; j += 1) {
-                        if (tokens[j].type == SCALE) {
-                            if (peek_token(result, j, 1, &peek_token_ptr) && peek_token_ptr->type == IDENTIFIER) {
-                                if (strcmp(tokens[i].value.string, peek_token_ptr->value.string) == 0) {
-                                    i = j - 1;
-                                    scale_found = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if (!scale_found) {
-                        return parser_error(result, ERROR_SCALE_DEFINITION_NOT_FOUND, i);
-                    }
-                    break;
-                default:
-                    return parser_error(result, ERROR_EXPECTED_SCALE_REF_OR_INLINE, i);
+                i += 2;
+                Compiler_Error_Type scale_error = NO_ERROR;
+                scale = get_scale(result->token_amount, tokens, &i, &scale_error);
+                if (scale_error != NO_ERROR) {
+                    return parser_error(result, scale_error, i);
                 }
                 break;
             case REPEAT:
-                if (++i >= result->token_amount || tokens[i].type != NUMBER) {
+                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != NUMBER) {
                     return parser_error(result, ERROR_EXPECTED_NUMBER, i);
                 }
+                i++;
                 int repeat_amount = tokens[i].value.number;
                 nest_idx += 1;
-                nest_repetitions[nest_idx] = repeat_amount;
-                if (++i >= result->token_amount || tokens[i].type != PAREN_OPEN) {
+                nest_repetitions[nest_idx].target = repeat_amount;
+                nest_repetitions[nest_idx].round = 0;
+                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != PAREN_OPEN) {
                     return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
                 }
+                i++;
                 break;
-            case DEFINE:
-                if (++i >= result->token_amount || tokens[i].type != IDENTIFIER) {
-                    return parser_error(result, ERROR_EXPECTED_IDENTIFIER, i);
+            case ROUNDS: {
+                int rounds[16] = {0};
+                int amount;
+                for (
+                    amount = 0;
+                    peek_token(result, i + amount, 1, &peek_token_ptr) && peek_token_ptr->type == NUMBER;
+                    amount++
+                ) {
+                    rounds[amount] = peek_token_ptr->value.number;
                 }
-                if (++i >= result->token_amount || tokens[i].type != PAREN_OPEN) {
+                if (amount == 0) {
+                    return parser_error(result, ERROR_EXPECTED_NUMBER, i);
+                }
+                i += amount;
+                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != PAREN_OPEN) {
                     return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
                 }
-                i = tokens[i].value.number;
-                break;
-            case IDENTIFIER:
-                int definition_idx = -1;
-                bool found_definition = false;
-                for (int j = 0; j < result->token_amount; j += 1) {
-                    if (tokens[j].type == DEFINE) {
-                        if (peek_token(result, j, 1, &peek_token_ptr) && peek_token_ptr->type == IDENTIFIER) {
-                            if (strcmp(tokens[i].value.string, peek_token_ptr->value.string) == 0) {
-                                int definition_body_start = j + 1;
-                                definition_idx = definition_body_start;
-                                found_definition = true;
-                                break;
-                            }
-                        }
+                i++;
+                bool special_round = false;
+                for (int j = 0; j < amount; j++) {
+                    if ((rounds[j] - 1) == nest_repetitions[nest_idx].round) {
+                        special_round = true;
+                        break;
                     }
                 }
-                if (!found_definition) {
-                    return parser_error(result, ERROR_NO_DEFINITION_FOUND, i);
+                if (!special_round) {
+                    int paren_close_location = tokens[i].value.number;
+                    i = paren_close_location;
                 }
-                i_return_positions[i_return_idx] = i;
-                i_return_idx += 1;
-                i = definition_idx;
-                i += 1; // skip '('
+            } break;
+            case DEFINE: {
+                if (!peek_token(result, i, 1 , &peek_token_ptr) || peek_token_ptr->type != IDENTIFIER) {
+                    return parser_error(result, ERROR_EXPECTED_IDENTIFIER, i);
+                }
+                i++;
+                bool new_variable = true;
+                int variable_idx = variable_count;
+                for (int j = 0; j < variable_count; j++) {
+                    if (strcmp(tokens[i].value.string, variables[j].ident) == 0) {
+                        new_variable = false;
+                        variable_idx = j;
+                        break;
+                    }
+                }
+                variables[variable_idx].ident = tokens[i].value.string;
+                if (peek_token(result, i, 1, &peek_token_ptr) && peek_token_ptr->type == PAREN_OPEN) {
+                    int paren_close_location = peek_token_ptr->value.number;
+                    i = paren_close_location;
+                    variables[variable_idx].address = peek_token_ptr->address;
+                } else {
+                    return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                }
+                if (new_variable) {
+                    variable_count++;
+                }
+            } break;
+            case IDENTIFIER:
+                bool known_identifier = false;
+                for (int j = 0; j < variable_count; j++) {
+                    if (strcmp(tokens[i].value.string, variables[j].ident) == 0) {
+                        known_identifier = true;
+                        i_return_positions[i_return_idx] = i;
+                        i_return_idx += 1;
+                        i = variables[j].address;
+                        break;
+                    }
+                }
+                if (!known_identifier) {
+                    return parser_error(result, ERROR_UNKNOWN_IDENTIFIER, i);
+                }
                 break;
             case PAREN_CLOSE:
                 int paren_return_location = tokens[i].value.number;
                 if (paren_return_location > 1 && tokens[paren_return_location - 2].type == REPEAT) {
-                    nest_repetitions[nest_idx] -= 1;
-                    if (nest_repetitions[nest_idx] > 0) {
+                    nest_repetitions[nest_idx].round++;
+                    if (nest_repetitions[nest_idx].round < nest_repetitions[nest_idx].target) {
                         int paren_open_idx = tokens[i].value.number;
                         i = paren_open_idx;
                     } else {
-                        nest_repetitions[nest_idx] = -1;
+                        nest_repetitions[nest_idx].target = -1;
+                        nest_repetitions[nest_idx].round = 0;
                         nest_idx -= 1;
                     }
                 } else if (paren_return_location > 1 && tokens[paren_return_location - 2].type == DEFINE) {
                     i_return_idx--;
                     i = i_return_positions[i_return_idx];
-                } else {
-                    return parser_error(result, ERROR_INTERNAL, i);
                 }
                 break;
-            case SLASH:
-                return parser_error(result, ERROR_SYNTAX_ERROR, i);
             default:
                 return parser_error(result, ERROR_SYNTAX_ERROR, i);
             }
@@ -959,9 +863,7 @@ void free_compiler_result(Compiler_Result *compiler_result) {
             case RISE_SEMI:     token_type = "Semi Rise"; break;
             case FALL_SEMI:     token_type = "Semi Fall"; break;
             case DURATION:      token_type = "Duration"; break;
-            case SETDURATION:   token_type = "Set Duration"; break;
             case SCALE:         token_type = "Scale"; break;
-            case SETSCALE:      token_type = "Set Scale"; break;
             case REPEAT:        token_type = "Repeat"; break;
             case DEFINE:        token_type = "Define"; break;
             case PAREN_OPEN:    token_type = "Paren Open"; break;

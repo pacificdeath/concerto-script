@@ -16,6 +16,7 @@ typedef struct Tone {
     int end_frequency;
     float duration;
     uint16_t scale;
+    uint8_t octave;
 } Tone;
 
 #endif

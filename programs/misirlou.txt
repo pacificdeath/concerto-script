@@ -1,0 +1,10 @@
+setscale (a a# c# d e f ab)
+define q ( play wait play wait )
+define h (repeat 2(q))
+define w (repeat 4(q))
+bpm 180
+1/32
+define misirlou (
+a h q +q +h +h + h q + q+ h - h - repeat 4(w)
+)
+misirlou

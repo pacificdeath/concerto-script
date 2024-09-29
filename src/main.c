@@ -25,6 +25,12 @@
 #define MIN_NOTE -44
 #define SILENCE (MAX_NOTE + 1)
 
+typedef struct Visual_Note {
+    int note_chars[3];
+    int note_chars_count;
+    Color color;
+} Visual_Note;
+
 typedef struct {
     int tex;
     float anim_time;
@@ -58,9 +64,23 @@ int main (int argc, char **argv) {
     const float bird_width = (window_width / bird_row_amount);
     InitWindow(window_width, window_height, "Bird");
     // Textures MUST be loaded after Window initialization (OpenGL context is required)
+    Visual_Note visual_notes[12] = {
+        { {'C'},        1, (Color) { 0, 0, 255, 255 } },
+        { {'C', '#'},   2, (Color) { 0, 127, 255, 255 } },
+        { {'D'},        1, (Color) { 0, 255, 0, 255 } },
+        { {'D', '#'},   2, (Color) { 0, 255, 127, 255 } },
+        { {'E'},        1, (Color) { 255, 0, 0, 255 } },
+        { {'F'},        1, (Color) { 255, 127, 0, 255 } },
+        { {'F' ,'#'},   2, (Color) { 255, 255, 0, 255 } },
+        { {'G'},        1, (Color) { 127, 0, 255, 255 } },
+        { {'G', '#'},   2, (Color) { 255, 0, 255, 255 } },
+        { {'A'},        1, (Color) { 0, 255, 255, 255 } },
+        { {'A', '#'},   2, (Color) { 127, 255, 255, 255 } },
+        { {'B'},        1, (Color) { 255, 255, 255, 255 } }
+    };
     int bird_tex_amount = 4;
     int bird_tex_px = 32;
-    float bird_scale = (window_width / bird_tex_px) / bird_row_amount;
+    float bird_scale = (window_width / bird_tex_px) / 8;
     Texture2D bird_textures[bird_tex_amount];
     bird_textures[0] = LoadTexture("textures/bird0.png");
     bird_textures[1] = LoadTexture("textures/bird1.png");
@@ -114,7 +134,7 @@ int main (int argc, char **argv) {
 
     char *filename = argv[1];
 
-    uint16_t used_notes = ~0;
+    bool *used_notes = NULL;
     uint16_t current_scale = ~0;
 
     while (!WindowShouldClose()) {
@@ -195,23 +215,7 @@ int main (int argc, char **argv) {
             int c_offset_from_a = 3;
             int offset_to_avoid_negatives = 96;
             int bird_note = (bird_idx + c_offset_from_a) % 12;
-            bool unused = (used_notes & (1 << bird_note)) == 0;
-            bool is_singing;
-            if (!unused && birds_active && is_synthesizer_sound_playing(current_sound)) {
-                current_scale = current_sound->tone.scale;
-                if (current_sound->tone.start_note == SILENCE) {
-                    is_singing = false;
-                } else {
-                    is_singing = (
-                        current_sound->tone.start_note
-                        + offset_to_avoid_negatives
-                        - c_offset_from_a
-                    ) % 12 == bird_idx;
-                }
-            } else {
-                is_singing = false;
-            }
-            bool in_scale = (current_scale & (1 << bird_note)) != 0;
+            /*
             int y_offset = (window_height / 3);
             if (bird_idx >= bird_row_amount) {
                 y_offset *= 2;
@@ -220,28 +224,79 @@ int main (int argc, char **argv) {
                 y_offset -= bird_tex_px;
             }
             float x = (bird_width / 2.0f) + (bird_width * (bird_idx % bird_row_amount));
-            float y = sin((GetTime() + x) * 0.5f) * 10.0f + y_offset;
+            float y = sin((GetTime() + x) * 1.5f) * 10.0f + y_offset;
             x -= bird_width / 4.0f;
             y -= (window_height / 3.0f) / 4.0f;
             Vector2 position = { x, y };
             float rotation = 0.0f;
-            Texture2D *texture;
-            if (is_singing) {
-                if (in_scale) {
-                    texture = &birdsing_textures[bird->tex];
-                } else {
-                    texture = &nonscalebirdsing_textures[bird->tex];
-                }
-            } else if (!unused) {
-                if (in_scale) {
-                    texture = &bird_textures[bird->tex];
-                } else {
-                    texture = &nonscalebird_textures[bird->tex];
-                }
-            } else {
-                texture = &unusedbird_textures[bird->tex];
-            }
+            int circle_size = 50;
+            Vector2 circle_pos = {
+                .x = position.x + ((float)circle_size * 0.5f),
+                .y = position.y + ((float)circle_size * 0.5f) - window_height * 0.05,
+            };
+            Vector2 note_pos = {
+                .x = circle_pos.x - window_width * 0.02,
+                .y = circle_pos.y - window_height * 0.02,
+            };
+            */
+            /*
+            DrawCircleV(circle_pos, circle_size, BLACK);
+            DrawTextCodepoints(
+                font,
+                visual_notes[bird_idx].note_chars,
+                visual_notes[bird_idx].note_chars_count,
+                note_pos,
+                circle_size,
+                circle_size / 20,
+                visual_notes[bird_idx].color
+            );
             DrawTextureEx(*texture, position, rotation, bird_scale, WHITE);
+            */
+            int x_step = window_width / 12;
+            int y_step = window_height / 8;
+            int w = x_step * bird_idx;
+            for (int i = 0; i < 8; i++) {
+                bool unused = true;
+                if (used_notes != NULL && used_notes[(i * 12) + bird_idx]) {
+                    unused = false;
+                }
+                bool is_singing;
+                if (!unused && birds_active && is_synthesizer_sound_playing(current_sound)) {
+                    current_scale = current_sound->tone.scale;
+                    if (current_sound->tone.start_note == SILENCE) {
+                        is_singing = false;
+                    } else {
+                        is_singing = (
+                            current_sound->tone.start_note
+                            + offset_to_avoid_negatives
+                            - c_offset_from_a
+                        ) % 12 == bird_idx;
+                    }
+                } else {
+                    is_singing = false;
+                }
+                bool in_scale = (current_scale & (1 << bird_note)) != 0;
+                Texture2D *texture;
+                if (is_singing && i == current_sound->tone.octave) {
+                    if (in_scale) {
+                        texture = &birdsing_textures[bird->tex];
+                    } else {
+                        texture = &nonscalebirdsing_textures[bird->tex];
+                    }
+                } else if (!unused) {
+                    if (in_scale) {
+                        texture = &bird_textures[bird->tex];
+                    } else {
+                        texture = &nonscalebird_textures[bird->tex];
+                    }
+                } else {
+                    texture = &unusedbird_textures[bird->tex];
+                }
+                int h = y_step * i;
+                Vector2 position = {w,h};
+                DrawTextureEx(*texture, position, 0, bird_scale, WHITE);
+                DrawRectangleLines(w, h, x_step, y_step, BLUE);
+            }
         }
 
         if (editor_active) {
