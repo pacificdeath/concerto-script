@@ -38,11 +38,11 @@ set LIST_FREQUENCIES=%LIST_FREQUENCIES:"=%
 
 gcc -c ^
     !DEBUG! ^
-    ./src/bird_windows.c ^
-    -o bird_windows.o
+    ./src/windows_wrapper.c ^
+    -o windows_wrapper.o
 
 if not %errorlevel% equ 0 (
-    echo compilation of bird_windows.c failed
+    echo compilation of windows_wrapper.c failed
     goto :end
 )
 
@@ -62,8 +62,8 @@ if not %errorlevel% equ 0 (
 
 gcc ^
     main.o ^
-    bird_windows.o ^
-    -o bird.exe ^
+    windows_wrapper.o ^
+    -o main.exe ^
     -O0 ^
     -Wall ^
     -std=c99 ^
@@ -74,15 +74,15 @@ gcc ^
     -lwinmm
 
 if not %errorlevel% equ 0 (
-    echo compilation of bird.exe failed
+    echo compilation of main.exe failed
     goto :end
 )
 
 if %errorlevel% equ 0 (
     if !GDB!==1 (
-        gdb bird.exe
+        gdb --args main.exe !PROGRAM!
     ) else (
-        bird.exe !PROGRAM!
+        main.exe !PROGRAM!
     )
 )
 goto :end

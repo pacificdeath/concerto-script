@@ -1,24 +1,6 @@
-#include <stdint.h>
-
 #include "raylib.h"
-
-#include "bird_windows.h"
-#include "types.h"
-
-typedef struct Synthesizer_Sound {
-    int16_t *raw_data;
-    Tone tone;
-    Sound sound;
-} Synthesizer_Sound;
-
-typedef struct Synthesizer {
-    int sound_capacity;
-    Synthesizer_Sound *sounds;
-    int current_sound_idx;
-    int sound_count;
-    Mutex mutex;
-    bool should_cancel;
-} Synthesizer;
+#include "main.h"
+#include "windows_wrapper.h"
 
 bool is_synthesizer_sound_playing(Synthesizer_Sound *s) {
     return s != NULL && IsSoundPlaying((s->sound));

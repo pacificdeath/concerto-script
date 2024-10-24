@@ -6,8 +6,7 @@
 #include <stdint.h>
 
 #include "raylib.h"
-
-#include "types.h"
+#include "main.h"
 
 #ifdef DEBUG
 #include <time.h>
@@ -19,115 +18,6 @@
     TODO:   handle case when some ridiculous person is trying to generate more tokens
             or tones than what is allowed by this thing
 */
-
-#define IDENT_MAX_LENGTH 128
-#define VARIABLE_MAX_COUNT 256
-#define MAX_PAREN_NESTING 32
-
-#define ERROR_MESSAGE_MAX_LEN
-
-typedef enum Token_Type {
-    NONE = 0,
-    NUMBER,
-    IDENTIFIER,
-    SEMI,
-    RISE,
-    FALL,
-    PAREN_OPEN,
-    PAREN_CLOSE,
-    NOTE,
-    BPM,
-    PLAY,
-    SLIDEUP,
-    SLIDEDOWN,
-    WAIT,
-    DURATION,
-    SCALE,
-    REPEAT,
-    ROUNDS,
-    DEFINE,
-} Token_Type;
-
-typedef union Token_Value {
-    int number;
-    char *string;
-} Token_Value;
-
-typedef struct Token {
-    enum Token_Type type;
-    int address;
-    int line_number;
-    int char_index;
-    Token_Value value;
-} Token;
-
-typedef struct Token_Variable {
-    char *ident;
-    int address;
-} Token_Variable;
-
-typedef struct Repetition {
-    int target;
-    int round;
-} Repetition;
-
-typedef enum Compiler_Error_Type {
-    NO_ERROR = 0,
-    ERROR_NO_SOUND,
-    ERROR_SYNTAX_ERROR,
-    ERROR_INVALID_SEMI,
-    ERROR_UNKNOWN_IDENTIFIER,
-    ERROR_EXPECTED_IDENTIFIER,
-    ERROR_EXPECTED_PAREN_OPEN,
-    ERROR_NO_MATCHING_CLOSING_PAREN,
-    ERROR_NO_SCALE_IDENTIFIER,
-    ERROR_EXPECTED_NUMBER,
-    ERROR_NUMBER_TOO_BIG,
-    ERROR_NO_MATCHING_OPENING_PAREN,
-    ERROR_NESTING_TOO_DEEP,
-    ERROR_SCALE_CAN_ONLY_HAVE_NOTES,
-    ERROR_SCALE_CAN_NOT_BE_EMPTY,
-    ERROR_INTERNAL,
-} Compiler_Error_Type;
-
-typedef struct Compiler_Error {
-    Compiler_Error_Type type;
-    char *message;
-} Compiler_Error;
-
-typedef struct Compiler_Result {
-    char **data;
-    int data_len;
-    int line_number;
-    int char_idx;
-    Compiler_Error error;
-    int token_amount;
-    Token *tokens;
-    int tone_amount;
-    Tone *tones;
-    bool used_notes[96];
-} Compiler_Result;
-
-typedef enum Direction {
-    DIRECTION_RISE = 1,
-    DIRECTION_FALL = -1,
-} Direction;
-
-typedef struct Optional_Scale_Offset_Data {
-    Compiler_Result *result;
-    int *token_idx;
-    int current_note;
-    uint16_t current_scale;
-    Direction direction;
-} Optional_Scale_Offset_Data;
-
-typedef struct Tone_Add_Data {
-    Compiler_Result *result;
-    int start_note;
-    int end_note;
-    float duration;
-    uint16_t scale;
-} Tone_Add_Data;
 
 int is_valid_in_identifier (char c) {
     return isalpha(c) || isdigit(c) || c == '_';
@@ -145,7 +35,7 @@ static bool peek_token(Compiler_Result *result, int index, int offset, Token **t
 static void populate_error_message(Compiler_Result *result, int line_number, int char_idx) {
     Compiler_Error *error = &(result->error);
     error->message[0] = '\0';
-    char *str_buffer = (char *)malloc(sizeof(char) * 4096);
+    char str_buffer[128];
 
     switch (error->type) {
     case NO_ERROR:
@@ -155,7 +45,7 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         sprintf(str_buffer, "This is wrong");
         break;
     case ERROR_INVALID_SEMI:
-        sprintf(str_buffer, "\"SEMI\" must be followed\nby one of these:\nSLIDEUP, SLIDEDOWN\nRISE, FALL");
+        sprintf(str_buffer, "\"SEMI\" must be followed\nby one of these:\nRISE, FALL");
         break;
     case ERROR_UNKNOWN_IDENTIFIER:
         sprintf(str_buffer, "This thing is not at all known");
@@ -198,7 +88,6 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         break;
     }
     strcat(error->message, str_buffer);
-    int line_number_idx0 = line_number - 1;
     int slice_max_right = 20;
     int slice_start = char_idx > slice_max_right ? char_idx - slice_max_right : 0;
     int slice_padding = 10;
@@ -208,13 +97,13 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
     {
         int i;
         for (i = 0; i < slice_len; i += 1) {
-            slice[i] = result->data[line_number_idx0][slice_start + i];
+            slice[i] = result->data[0][slice_start + i];
         }
         slice[i] = '\0';
     }
     sprintf(str_buffer, "\nOn line %d:\n%s", line_number, slice);
     strcat(error->message, str_buffer);
-    if (slice_start + slice_len < strlen(result->data[line_number_idx0])) {
+    if (slice_start + slice_len < strlen(result->data[0])) {
         strcat(error->message, "...");
     }
     strcat(error->message, "\n");
@@ -236,7 +125,6 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         str_buffer[i + 1] = '\0';
     }
     strcat(error->message, str_buffer);
-    free(str_buffer);
     return;
 }
 
@@ -267,22 +155,26 @@ static float note_to_frequency (int semi_offset) {
     return A4_FREQ * powf(2.0f, (float)semi_offset / OCTAVE_OFFSET);
 }
 
-static void tone_add(Tone_Add_Data data) {
-    float start_frequency = note_to_frequency(data.start_note);
-    float end_frequency = note_to_frequency(data.end_note);
-    Tone* tone = &(data.result->tones[data.result->tone_amount]);
-    tone->start_note = data.start_note;
-    tone->start_frequency = start_frequency;
-    tone->end_note = data.end_note;
-    tone->end_frequency = end_frequency;
-    tone->duration = data.duration;
-    tone->scale = data.scale;
-    unsigned int unsigned_note_from_c0 = (data.start_note + 57);
-    tone->octave = unsigned_note_from_c0 / 12;
-    if (data.start_note != SILENCE) {
-        data.result->used_notes[unsigned_note_from_c0] = true;
+static void tone_add(Tone_Add_Data *data) {
+    float start_frequency = note_to_frequency(data->start_note);
+    float end_frequency = note_to_frequency(data->end_note);
+    Tone* tone = &(data->result->tones[data->result->tone_amount]);
+    tone->idx = data->idx;
+    tone->line_idx = data->token->line_number;
+    tone->char_idx = data->token->char_index;
+    switch (data->token->type) {
+    default: tone->char_count = 1; break;
+    case PLAY:
+    case WAIT: tone->char_count = 4; break;
     }
-    (data.result->tone_amount)++;
+    tone->start_note = data->start_note;
+    tone->start_frequency = start_frequency;
+    tone->end_note = data->end_note;
+    tone->end_frequency = end_frequency;
+    tone->duration = data->duration;
+    unsigned int unsigned_note_from_c0 = (data->start_note + 57);
+    tone->octave = unsigned_note_from_c0 / 12;
+    (data->result->tone_amount)++;
 }
 
 static int char_to_int(char c) {
@@ -404,24 +296,25 @@ static int parse_optional_scale_offset(Optional_Scale_Offset_Data data) {
     return note;
 }
 
-Compiler_Result *compile(char *data[], int data_len) {
+Compiler_Result *compile(State *state) {
     #ifdef DEBUG
         printf("Compiling:\n");
     #endif
+
+    int data_len = state->editor.line_count;
+    char *data[state->editor.line_count];
+    for (int i = 0; i < data_len; i++) {
+        data[i] = state->editor.lines[i];
+    }
+
     Compiler_Result *result = (Compiler_Result *)malloc(sizeof(Compiler_Result));
     result->data = data;
     result->data_len = data_len;
     result->tokens = NULL;
     result->tones = NULL;
-    result->line_number = 0;
+    result->line_number = -1;
     result->char_idx = 0;
     result->error.type = NO_ERROR;
-    result->error.message = (char *)malloc(sizeof(char) * 256);
-    if (result->error.message == NULL) {
-        printf("malloc failed for compiler_error.message\n");
-        result->error.type = ERROR_INTERNAL;
-        return result;
-    }
 
     result->token_amount = 0;
     result->tokens = (Token *)malloc(sizeof(Token) * 4096);
@@ -434,10 +327,6 @@ Compiler_Result *compile(char *data[], int data_len) {
     result->tone_amount = 0;
     result->tones = NULL;
 
-    for (int i = 0; i < 96; i++) {
-        result->used_notes[i] = false;
-    }
-
     // start lexer
     {
         #ifdef DEBUG
@@ -445,7 +334,7 @@ Compiler_Result *compile(char *data[], int data_len) {
         lexer_time = clock();
         #endif
         int paren_nest_level = 0;
-        int paren_open_addresses[MAX_PAREN_NESTING] = {0};
+        int paren_open_addresses[COMPILER_MAX_PAREN_NESTING] = {0};
         for (int line_i = 0; line_i < data_len; line_i++) {
             char *line = data[line_i];
             result->line_number++;
@@ -457,7 +346,7 @@ Compiler_Result *compile(char *data[], int data_len) {
                 switch (line[*i]) {
                 case '(':
                     {
-                        if (paren_nest_level >= MAX_PAREN_NESTING) {
+                        if (paren_nest_level >= COMPILER_MAX_PAREN_NESTING) {
                             return lexer_error(result, ERROR_NESTING_TOO_DEEP);
                         }
                         Token *token = token_add(result, PAREN_OPEN);
@@ -514,10 +403,6 @@ Compiler_Result *compile(char *data[], int data_len) {
                         token_add(result, SEMI);
                     } else if (strcmp("PLAY", ident) == 0) {
                         token_add(result, PLAY);
-                    } else if (strcmp("SLIDEUP", ident) == 0) {
-                        token_add(result, SLIDEUP);
-                    } else if (strcmp("SLIDEDOWN", ident) == 0) {
-                        token_add(result, SLIDEDOWN);
                     } else if (strcmp("WAIT", ident) == 0) {
                         token_add(result, WAIT);
                     } else if (strcmp("BPM", ident) == 0) {
@@ -568,7 +453,7 @@ Compiler_Result *compile(char *data[], int data_len) {
         }
     }
 
-    Token_Variable variables[VARIABLE_MAX_COUNT] = {0};
+    Token_Variable variables[COMPILER_VARIABLE_MAX_COUNT] = {0};
     int variable_count = 0;
 
     result->tones = (Tone *)malloc(sizeof(Tone) * 4096);
@@ -577,6 +462,8 @@ Compiler_Result *compile(char *data[], int data_len) {
         result->error.type = ERROR_INTERNAL;
         return result;
     }
+
+    uint32_t tone_idx = 0;
 
     // start parser
     {
@@ -608,8 +495,6 @@ Compiler_Result *compile(char *data[], int data_len) {
                     return parser_error(result, ERROR_INVALID_SEMI, i);
                 }
                 switch (peek_token_ptr->type) {
-                case SLIDEUP:
-                case SLIDEDOWN:
                 case RISE:
                 case FALL:
                     break;
@@ -630,45 +515,26 @@ Compiler_Result *compile(char *data[], int data_len) {
             case PLAY: {
                 float bpm_play_duration = duration_sec * 240 / bpm;
                 Tone_Add_Data tone_add_data = {
+                    .idx = tone_idx++,
                     .result = result,
+                    .token = &tokens[i],
                     .start_note = note,
                     .end_note = note,
                     .duration = bpm_play_duration,
-                    .scale = scale,
                 };
-                tone_add(tone_add_data);
-            } break;
-            case SLIDEUP:
-            case SLIDEDOWN: {
-                Optional_Scale_Offset_Data slide_note_data = {
-                    .result = result,
-                    .token_idx = &i,
-                    .current_note = note,
-                    .current_scale = semi_flag ? ~0 : scale,
-                    .direction = (tokens[i].type == SLIDEUP) ? DIRECTION_RISE : DIRECTION_FALL
-                };
-                semi_flag = false;
-                int end_note = parse_optional_scale_offset(slide_note_data);
-                float bpm_slide_duration = duration_sec * 240 / bpm;
-                Tone_Add_Data tone_add_data = {
-                    .result = result,
-                    .start_note = note,
-                    .end_note = end_note,
-                    .duration = bpm_slide_duration,
-                    .scale = scale
-                };
-                tone_add(tone_add_data);
+                tone_add(&tone_add_data);
             } break;
             case WAIT: {
                 float bpm_wait_duration = duration_sec * 240 / bpm;
                 Tone_Add_Data tone_add_data = {
+                    .idx = tone_idx++,
                     .result = result,
+                    .token = &tokens[i],
                     .start_note = SILENCE,
                     .end_note = SILENCE,
                     .duration = bpm_wait_duration,
-                    .scale = scale
                 };
-                tone_add(tone_add_data);
+                tone_add(&tone_add_data);
             } break;
             case DURATION:
                 i += 1;
@@ -833,7 +699,6 @@ Compiler_Result *compile(char *data[], int data_len) {
 }
 
 void free_compiler_result(Compiler_Result *compiler_result) {
-    if (compiler_result->error.message != NULL) { free(compiler_result->error.message); }
     for (int i = 0; i < compiler_result->token_amount; i += 1) {
         switch (compiler_result->tokens[i].type) {
         case IDENTIFIER:
