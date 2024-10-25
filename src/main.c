@@ -104,9 +104,9 @@ int main (int argc, char **argv) {
             case EDITOR_STATE_READY_TO_PLAY: {
                 editor_save_file(state, filename);
                 state->compiler_result = compile(state);
-                if (state->compiler_result->error.type != NO_ERROR) {
-                    console_print_str(state, state->compiler_result->error.message);
-                    free_compiler_result(state->compiler_result);
+                if (state->compiler_result->error_type != NO_ERROR) {
+                    console_print_str(state, state->compiler_result->error_message);
+                    free_compiler_result(state);
                     state->editor.state = EDITOR_STATE_WRITE;
                     console_active = true;
                     continue;
@@ -148,7 +148,7 @@ int main (int argc, char **argv) {
                     synthesizer_cancel(synthesizer);
                     thread_join(synth_thread);
                     synthesizer_free(synthesizer);
-                    free_compiler_result(state->compiler_result);
+                    free_compiler_result(state);
                     is_playing = false;
                 }
                 editor_load_file(state, filename);
@@ -160,12 +160,11 @@ int main (int argc, char **argv) {
         EndDrawing();
     }
 
-
     UnloadFont(state->font);
     CloseWindow();
     CloseAudioDevice();
     if (state->compiler_result != NULL) {
-        free_compiler_result(state->compiler_result);
+        free_compiler_result(state);
     }
     free(state);
 }

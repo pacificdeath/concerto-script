@@ -331,7 +331,6 @@ void editor_load_file(State *state, char *filename) {
     char line[4096];
     file = fopen(filename, "r");
     if (file == NULL) {
-        fclose(file);
         return;
     }
     state->editor.line_count = 1;
@@ -353,7 +352,6 @@ void editor_save_file(State *state, char *filename) {
     FILE *file;
     file = fopen(filename, "w");
     if (file == NULL) {
-        fclose(file);
         return;
     }
     for (int i = 0; i < state->editor.line_count; i++) {
@@ -458,27 +456,95 @@ static void paste_clipboard(State *state) {
 }
 
 void editor_input(State *state) {
+    Editor *e = &state->editor;
+
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-    bool state_toggle_condition = ctrl && IsKeyPressed(KEY_P);
+    bool play_and_stop = ctrl && IsKeyPressed(KEY_P);
 
-    switch (state->editor.state) {
+    switch (e->state) {
     default: return;
     case EDITOR_STATE_WRITE: {
-        if (state_toggle_condition) {
-            state->editor.state = EDITOR_STATE_READY_TO_PLAY;
+        if (play_and_stop) {
+            e->state = EDITOR_STATE_READY_TO_PLAY;
+            return;
+        }
+        bool go_to_definition = ctrl && IsKeyPressed(KEY_G);
+        if (go_to_definition) {
+            char ident[EDITOR_LINE_MAX_LENGTH];
+            int ident_offset = 0;
+            while ((e->cursor_x + ident_offset) >= 0 && is_valid_in_identifier(e->lines[e->cursor_line][e->cursor_x + ident_offset])) {
+                ident_offset--;
+            }
+            ident_offset++;
+            int ident_len = 0;
+            while (is_valid_in_identifier(e->lines[e->cursor_line][e->cursor_x + ident_offset])) {
+                ident[ident_len] = e->lines[e->cursor_line][e->cursor_x + ident_offset];
+                ident_offset++;
+                ident_len++;
+            }
+            ident[ident_len] = '\0';
+            int ident_line_idx = 0;
+            int ident_char_idx = 0;
+            int ident_idx = 0;
+            bool ident_found = false;
+
+            char *define = "DEFINE";
+            int define_len = 6;
+            int define_idx = 0;
+            bool define_found = false;
+
+            for (int i = 0; i < e->line_count; i++) {
+                if (ident_found) {
+                    break;
+                }
+                for (int j = 0; e->lines[i][j] != '\0'; j++) {
+                    if (define_found) {
+                        if (is_valid_in_identifier(e->lines[i][j])) {
+                            if (e->lines[i][j] == ident[ident_idx]) {
+                                ident_idx++;
+                                int next_idx = j + 1;
+                                char next = e->lines[i][next_idx];
+                                if (ident_idx == ident_len && !is_valid_in_identifier(next) || next == '\0') {
+                                    ident_line_idx = i;
+                                    ident_char_idx = next_idx - ident_len;
+                                    ident_found = true;
+                                    break;
+                                }
+                            } else {
+                                ident_idx = 0;
+                                define_idx = 0;
+                                define_found = false;
+                            }
+                        }
+                    } else if (e->lines[i][j] == define[define_idx]) {
+                        define_idx++;
+                        if (define_idx == define_len) {
+                            define_found = true;
+                        }
+                    }
+                }
+            }
+            if (ident_found) {
+                editor_set_cursor_line(state, ident_line_idx);
+                editor_set_cursor_x(state, ident_char_idx);
+                int middle_line = EDITOR_MAX_VISUAL_LINES / 2;
+                if (ident_line_idx > middle_line) {
+                    e->visual_vertical_offset = ident_line_idx - middle_line;
+                } else {
+                    e->visual_vertical_offset = 0;
+                }
+            }
             return;
         }
     } break;
     case EDITOR_STATE_PLAY: {
-        if (state_toggle_condition) {
-            state->editor.state = EDITOR_STATE_INTERRUPT;
+        if (play_and_stop) {
+            e->state = EDITOR_STATE_INTERRUPT;
         }
-        return;
-    } break;
+    } return;
     }
 
-    Editor *e = &state->editor;
     float scroll = GetMouseWheelMove();
     if (scroll != 0.0f) {
         e->visual_vertical_offset -= (scroll * EDITOR_SCROLL_MULTIPLIER);
@@ -741,6 +807,7 @@ static void editor_render_base(State *state, float line_height, float char_width
                     } else if (strcmp(e->word, "WAIT") == 0) {
                         color = EDITOR_WAIT_COLOR;
                     } else if (
+                        strcmp(e->word, "START") == 0 ||
                         strcmp(e->word, "DEFINE") == 0 ||
                         strcmp(e->word, "REPEAT") == 0 ||
                         strcmp(e->word, "ROUNDS") == 0 ||

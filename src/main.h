@@ -38,7 +38,7 @@
 
 #define CONSOLE_LINE_COUNT 8
 #define CONSOLE_LINE_MAX_LENGTH 64
-#define CONSOLE_BG_COLOR (Color) {64, 64, 64, 255}
+#define CONSOLE_BG_COLOR (Color) {0, 0, 0, 255}
 #define CONSOLE_TEXT_COLOR (Color) {0, 255, 255, 255}
 
 #define COMPILER_MAX_PAREN_NESTING 32
@@ -112,23 +112,24 @@ typedef struct Editor_Selection_Data {
 } Editor_Selection_Data;
 
 typedef enum Token_Type {
-    NONE = 0,
-    NUMBER,
-    IDENTIFIER,
-    SEMI,
-    RISE,
-    FALL,
-    PAREN_OPEN,
-    PAREN_CLOSE,
-    NOTE,
-    BPM,
-    PLAY,
-    WAIT,
-    DURATION,
-    SCALE,
-    REPEAT,
-    ROUNDS,
-    DEFINE,
+    TOKEN_NONE = 0,
+    TOKEN_START,
+    TOKEN_NUMBER,
+    TOKEN_IDENTIFIER,
+    TOKEN_SEMI,
+    TOKEN_RISE,
+    TOKEN_FALL,
+    TOKEN_PAREN_OPEN,
+    TOKEN_PAREN_CLOSE,
+    TOKEN_NOTE,
+    TOKEN_BPM,
+    TOKEN_PLAY,
+    TOKEN_WAIT,
+    TOKEN_DURATION,
+    TOKEN_SCALE,
+    TOKEN_REPEAT,
+    TOKEN_ROUNDS,
+    TOKEN_DEFINE,
 } Token_Type;
 
 typedef union Token_Value {
@@ -173,17 +174,13 @@ typedef enum Compiler_Error_Type {
     ERROR_INTERNAL,
 } Compiler_Error_Type;
 
-typedef struct Compiler_Error {
-    Compiler_Error_Type type;
-    char message[256];
-} Compiler_Error;
-
 typedef struct Compiler_Result {
+    Compiler_Error_Type error_type;
+    char error_message[256];
     char **data;
     int data_len;
     int line_number;
     int char_idx;
-    Compiler_Error error;
     int token_amount;
     Token *tokens;
     int tone_amount;
@@ -242,5 +239,9 @@ typedef struct State {
     Compiler_Result *compiler_result;
     Synthesizer_Sound *current_sound;
 } State;
+
+int is_valid_in_identifier (char c) {
+    return isalpha(c) || isdigit(c) || c == '_';
+}
 
 #endif
