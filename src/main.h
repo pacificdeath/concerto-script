@@ -25,7 +25,8 @@
 #define EDITOR_CURSOR_WIDTH 3
 #define EDITOR_CURSOR_ANIMATION_SPEED 10.0f
 #define EDITOR_SCROLL_MULTIPLIER 3
-#define EDITOR_FIND_MAX_LENGTH 32
+#define EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH 32
+#define EDITOR_GO_TO_LINE_TEXT_MAX_LENGTH 5
 #define EDITOR_NORMAL_COLOR (Color) { 255, 255, 255, 255 }
 #define EDITOR_PLAY_COLOR (Color) { 0, 255, 0, 255 }
 #define EDITOR_WAIT_COLOR (Color) { 255, 0, 0, 255 }
@@ -77,10 +78,13 @@ typedef struct Editor {
     int clipboard_line_count;
     char clipboard_lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
 
-    char finder_buffer[32];
+    char finder_buffer[EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH];
     int finder_buffer_length;
     int finder_match_idx;
     int finder_matches;
+
+    char go_to_line_buffer[EDITOR_GO_TO_LINE_TEXT_MAX_LENGTH];
+    int go_to_line_buffer_length;
 
     float cursor_anim_time;
 } Editor;
@@ -229,6 +233,7 @@ typedef struct State {
     enum {
         STATE_EDITOR_WRITE,
         STATE_EDITOR_FIND_TEXT,
+        STATE_EDITOR_GO_TO_LINE,
         STATE_TRY_COMPILE,
         STATE_COMPILATION_ERROR,
         STATE_WAITING_TO_PLAY,

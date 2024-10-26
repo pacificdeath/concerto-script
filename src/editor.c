@@ -18,6 +18,16 @@ static void editor_snap_visual_vertical_offset_to_cursor(State *state) {
     }
 }
 
+static void editor_center_visual_vertical_offset_around_cursor(State *state) {
+    Editor *e = &state->editor;
+    int middle_line = EDITOR_MAX_VISUAL_LINES / 2;
+    if (e->cursor_line > middle_line) {
+        e->visual_vertical_offset = e->cursor_line - middle_line;
+    } else {
+        e->visual_vertical_offset = 0;
+    }
+}
+
 static void editor_set_cursor_x(State *state, int x) {
     state->editor.cursor_x = x;
     state->editor.selection_x = x;
@@ -167,12 +177,7 @@ static void go_to_finder_match_idx(State *state) {
                         int match_end = j + 1;
                         editor_set_cursor_x(state, match_end - e->finder_buffer_length);
                         editor_set_selection_x(state, match_end);
-                        int middle_line = EDITOR_MAX_VISUAL_LINES / 2;
-                        if (i > middle_line) {
-                            e->visual_vertical_offset = i - middle_line;
-                        } else {
-                            e->visual_vertical_offset = 0;
-                        }
+                        editor_center_visual_vertical_offset_around_cursor(state);
                         return;
                     }
                     match_idx++;
@@ -188,7 +193,7 @@ static void go_to_definition(State *state) {
     Editor *e = &state->editor;
 
     char ident[EDITOR_LINE_MAX_LENGTH];
-    int ident_offset = 0;
+    int ident_offset = -1;
     while ((e->cursor_x + ident_offset) >= 0 && is_valid_in_identifier(e->lines[e->cursor_line][e->cursor_x + ident_offset])) {
         ident_offset--;
     }
@@ -215,28 +220,31 @@ static void go_to_definition(State *state) {
             break;
         }
         for (int j = 0; e->lines[i][j] != '\0'; j++) {
-            if (define_found) {
-                if (is_valid_in_identifier(e->lines[i][j])) {
-                    if (e->lines[i][j] == ident[ident_idx]) {
-                        ident_idx++;
-                        int next_idx = j + 1;
-                        char next = e->lines[i][next_idx];
-                        if (ident_idx == ident_len && !is_valid_in_identifier(next) || next == '\0') {
-                            ident_line_idx = i;
-                            ident_char_idx = next_idx - ident_len;
-                            ident_found = true;
-                            break;
-                        }
-                    } else {
-                        ident_idx = 0;
-                        define_idx = 0;
-                        define_found = false;
-                    }
+            if (!define_found) {
+                bool define_char_matches = e->lines[i][j] == define[define_idx];
+                if (define_char_matches) {
+                    define_idx++;
                 }
-            } else if (e->lines[i][j] == define[define_idx]) {
-                define_idx++;
                 if (define_idx == define_len) {
                     define_found = true;
+                }
+            }
+            if (is_valid_in_identifier(e->lines[i][j])) {
+                bool ident_char_matches = e->lines[i][j] == ident[ident_idx];
+                if (ident_char_matches) {
+                    ident_idx++;
+                    int next_idx = j + 1;
+                    char next = e->lines[i][next_idx];
+                    if (ident_idx == ident_len && !is_valid_in_identifier(next) || next == '\0') {
+                        ident_line_idx = i;
+                        ident_char_idx = next_idx - ident_len;
+                        ident_found = true;
+                        break;
+                    }
+                } else {
+                    define_idx = 0;
+                    define_found = false;
+                    ident_idx = 0;
                 }
             }
         }
@@ -244,12 +252,7 @@ static void go_to_definition(State *state) {
     if (ident_found) {
         editor_set_cursor_line(state, ident_line_idx);
         editor_set_cursor_x(state, ident_char_idx);
-        int middle_line = EDITOR_MAX_VISUAL_LINES / 2;
-        if (ident_line_idx > middle_line) {
-            e->visual_vertical_offset = ident_line_idx - middle_line;
-        } else {
-            e->visual_vertical_offset = 0;
-        }
+        editor_center_visual_vertical_offset_around_cursor(state);
     }
 }
 
@@ -604,7 +607,12 @@ void editor_input(State *state) {
             break;
         }
         if (ctrl && IsKeyPressed(KEY_G)) {
+            state->state = STATE_EDITOR_GO_TO_LINE;
+            break;
+        }
+        if (ctrl && IsKeyPressed(KEY_D)) {
             go_to_definition(state);
+            break;
         }
         float scroll = GetMouseWheelMove();
 
@@ -824,12 +832,43 @@ void editor_input(State *state) {
             go_to_finder_match_idx(state);
         } else {
             for (char c = 32; c < 127; c++) {
-                if (IsKeyPressed(c) && e->finder_buffer_length < EDITOR_FIND_MAX_LENGTH - 2) {
+                if (IsKeyPressed(c) && e->finder_buffer_length < EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH - 1) {
                     e->finder_match_idx = -1;
                     e->finder_buffer[e->finder_buffer_length] = c;
                     e->finder_buffer_length++;
                     e->finder_buffer[e->finder_buffer_length] = '\0';
                     update_finder_matches(state);
+                }
+            }
+        }
+    } break;
+    case STATE_EDITOR_GO_TO_LINE: {
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            e->go_to_line_buffer[0] = '\0';
+            e->go_to_line_buffer_length = 0;
+            state->state = STATE_EDITOR_WRITE;
+        } else if (auto_click(state, KEY_BACKSPACE) && e->go_to_line_buffer_length > 0) {
+            e->go_to_line_buffer_length--;
+            e->go_to_line_buffer[e->go_to_line_buffer_length] = '\0';
+        } else if (IsKeyPressed(KEY_ENTER)) {
+            int line = TextToInteger(e->go_to_line_buffer) - 1;
+            if (line >= e->line_count) {
+                line = e->line_count - 1;
+            } else if (line < 0) {
+                line = 0;
+            }
+            editor_set_cursor_line(state, line);
+            editor_set_cursor_x(state, 0);
+            editor_center_visual_vertical_offset_around_cursor(state);
+            state->state = STATE_EDITOR_WRITE;
+            e->go_to_line_buffer[0] = '\0';
+            e->go_to_line_buffer_length = 0;
+        } else {
+            for (char c = KEY_ZERO; c <= KEY_NINE; c++) {
+                if (IsKeyPressed(c) && e->go_to_line_buffer_length < (EDITOR_GO_TO_LINE_TEXT_MAX_LENGTH - 1)) {
+                    e->go_to_line_buffer[e->go_to_line_buffer_length] = c;
+                    e->go_to_line_buffer_length++;
+                    e->go_to_line_buffer[e->go_to_line_buffer_length] = '\0';
                 }
             }
         }

@@ -81,7 +81,7 @@ int main (int argc, char **argv) {
         switch (state->state) {
         default: break;
         case STATE_EDITOR_FIND_TEXT: {
-            char buffer[64 + EDITOR_FIND_MAX_LENGTH];
+            char buffer[64 + EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH];
             if (state->editor.finder_match_idx >= 0) {
                 sprintf(
                     buffer,
@@ -95,6 +95,11 @@ int main (int argc, char **argv) {
             } else {
                 sprintf(buffer, "Find text:\n\"%s\"", state->editor.finder_buffer);
             }
+            set_console_text(state, buffer);
+        } break;
+        case STATE_EDITOR_GO_TO_LINE: {
+            char buffer[64 + EDITOR_GO_TO_LINE_TEXT_MAX_LENGTH];
+            sprintf(buffer, "Go to line:\n[%s]", state->editor.go_to_line_buffer);
             set_console_text(state, buffer);
         } break;
         case STATE_TRY_COMPILE: {
@@ -155,6 +160,10 @@ int main (int argc, char **argv) {
             editor_render_state_write(state);
         } break;
         case STATE_EDITOR_FIND_TEXT: {
+            editor_render_state_write(state);
+            console_render(state);
+        } break;
+        case STATE_EDITOR_GO_TO_LINE: {
             editor_render_state_write(state);
             console_render(state);
         } break;

@@ -45,11 +45,17 @@ void console_render(State *state) {
         rec.height = (state->window_height * 0.5f) + (padding * 2.0f);
     } break;
     case STATE_EDITOR_FIND_TEXT: {
-        int width = char_width * EDITOR_FIND_MAX_LENGTH + 2;
+        int width = char_width * (EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH + 1);
         rec.x = (state->window_width * 0.5f) - (width * 0.5f) - padding;
         rec.y = (state->window_height * 0.7f) - padding;
         rec.width = width + (padding * 2.0f);
         rec.height = (state->window_height * 0.2f) + (padding * 2.0f);
+    } break;
+    case STATE_EDITOR_GO_TO_LINE: {
+        rec.x = (state->window_width * 0.4f) - padding;
+        rec.y = (state->window_height * 0.45f) - padding;
+        rec.width = (state->window_width * 0.2f) + (padding * 2.0f);
+        rec.height = (state->window_height * 0.1f) + (padding * 2.0f);
     } break;
     }
 
