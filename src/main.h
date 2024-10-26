@@ -25,6 +25,7 @@
 #define EDITOR_CURSOR_WIDTH 3
 #define EDITOR_CURSOR_ANIMATION_SPEED 10.0f
 #define EDITOR_SCROLL_MULTIPLIER 3
+#define EDITOR_FIND_MAX_LENGTH 32
 #define EDITOR_NORMAL_COLOR (Color) { 255, 255, 255, 255 }
 #define EDITOR_PLAY_COLOR (Color) { 0, 255, 0, 255 }
 #define EDITOR_WAIT_COLOR (Color) { 255, 0, 0, 255 }
@@ -57,31 +58,31 @@ typedef struct Tone {
     uint8_t octave;
 } Tone;
 
-typedef enum Editor_State {
-    EDITOR_STATE_WRITE,
-    EDITOR_STATE_READY_TO_PLAY,
-    EDITOR_STATE_WAITING_TO_PLAY,
-    EDITOR_STATE_PLAY,
-    EDITOR_STATE_INTERRUPT,
-} Editor_State;
-
 typedef struct Editor {
-    Editor_State state;
+    char current_file[EDITOR_FILENAME_MAX_LENGTH];
+
+    int line_count;
     char lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
     char word[EDITOR_LINE_MAX_LENGTH];
-    int line_count;
+
     int cursor_x;
     int cursor_line;
     int selection_x;
     int selection_line;
-    char current_file[EDITOR_FILENAME_MAX_LENGTH];
+    int visual_vertical_offset;
+
     int autoclick_key;
     float autoclick_down_time;
-    int auto_clickable_keys[AUTO_CLICKABLE_KEYS_AMOUNT];
-    int visual_vertical_offset;
-    float cursor_anim_time;
+
     int clipboard_line_count;
     char clipboard_lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
+
+    char finder_buffer[32];
+    int finder_buffer_length;
+    int finder_match_idx;
+    int finder_matches;
+
+    float cursor_anim_time;
 } Editor;
 
 typedef struct Editor_Cursor_Render_Data {
@@ -225,6 +226,16 @@ typedef struct Synthesizer {
 } Synthesizer;
 
 typedef struct State {
+    enum {
+        STATE_EDITOR_WRITE,
+        STATE_EDITOR_FIND_TEXT,
+        STATE_TRY_COMPILE,
+        STATE_COMPILATION_ERROR,
+        STATE_WAITING_TO_PLAY,
+        STATE_PLAY,
+        STATE_INTERRUPT,
+    } state;
+
     int window_width;
     int window_height;
 
@@ -239,6 +250,14 @@ typedef struct State {
     Compiler_Result *compiler_result;
     Synthesizer_Sound *current_sound;
 } State;
+
+int editor_line_height(State *state) {
+    return state->window_height / EDITOR_MAX_VISUAL_LINES;
+}
+
+int editor_char_width(int line_height) {
+    return line_height * 0.6;
+}
 
 int is_valid_in_identifier (char c) {
     return isalpha(c) || isdigit(c) || c == '_';

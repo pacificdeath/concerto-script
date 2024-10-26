@@ -58,11 +58,11 @@ int main (int argc, char **argv) {
 
     InitWindow(state->window_width, state->window_height, "Concerto Script");
 
+    SetExitKey(KEY_NULL);
+
     state->font = LoadFont("Consolas.ttf");
 
     SetTargetFPS(60);
-
-    bool console_active = false;
 
     Synthesizer *synthesizer = NULL;
     Thread *synth_thread;
@@ -75,86 +75,109 @@ int main (int argc, char **argv) {
 
     while (!WindowShouldClose()) {
         state->delta_time = GetFrameTime();
-        if (console_active) {
-            if (IsKeyPressed(KEY_ENTER)) {
-                console_active = false;
-            }
-        } else {
-            editor_input(state);
 
-            if (is_playing && (!is_synthesizer_sound_playing(state->current_sound) || state->current_sound == NULL)) {
-                state->current_sound = synthesizer_try_pop(synthesizer);
-                if (state->current_sound != NULL) {
-                    PlaySound((state->current_sound->sound));
-                }
+        editor_input(state);
+
+        switch (state->state) {
+        default: break;
+        case STATE_EDITOR_FIND_TEXT: {
+            char buffer[64 + EDITOR_FIND_MAX_LENGTH];
+            if (state->editor.finder_match_idx >= 0) {
+                sprintf(
+                    buffer,
+                    "Find text:\n\"%s\"\nMatch %i of %i",
+                    state->editor.finder_buffer,
+                    state->editor.finder_match_idx + 1,
+                    state->editor.finder_matches
+                );
+            } else if (state->editor.finder_buffer_length > 0) {
+                sprintf(buffer, "Find text:\n\"%s\"\nFound %i matches", state->editor.finder_buffer, state->editor.finder_matches);
+            } else {
+                sprintf(buffer, "Find text:\n\"%s\"", state->editor.finder_buffer);
+            }
+            set_console_text(state, buffer);
+        } break;
+        case STATE_TRY_COMPILE: {
+            editor_save_file(state, filename);
+            state->compiler_result = compile(state);
+            if (state->compiler_result->error_type != NO_ERROR) {
+                set_console_text(state, state->compiler_result->error_message);
+                free_compiler_result(state);
+                state->state = STATE_COMPILATION_ERROR;
+                continue;
+            }
+            int synthesizer_error;
+            synthesizer = synthesizer_allocate(
+                state->compiler_result->tones,
+                state->compiler_result->tone_amount,
+                &synthesizer_error
+            );
+            if (synthesizer_error) {
+                exit(synthesizer_error);
+            }
+            synth_thread = thread_create(synthesizer_run, synthesizer);
+            if (synth_thread == NULL) {
+                printf("Failed creating thread");
+                exit(1);
+            }
+            is_playing = true;
+            state->state = STATE_WAITING_TO_PLAY;
+        } break;
+        case STATE_INTERRUPT: {
+            if (is_playing) {
+                state->current_sound = NULL;
+                synthesizer_cancel(synthesizer);
+                thread_join(synth_thread);
+                synthesizer_free(synthesizer);
+                free_compiler_result(state);
+                is_playing = false;
+            }
+            editor_load_file(state, filename);
+            state->state = STATE_EDITOR_WRITE;
+        }
+        }
+
+        if (is_playing && (!is_synthesizer_sound_playing(state->current_sound) || state->current_sound == NULL)) {
+            state->current_sound = synthesizer_try_pop(synthesizer);
+            if (state->current_sound != NULL) {
+                PlaySound((state->current_sound->sound));
             }
         }
 
         BeginDrawing();
         ClearBackground(BLACK);
 
-        if (console_active) {
+        switch (state->state) {
+        default: {
+
+        } break;
+        case STATE_EDITOR_WRITE: {
+            editor_render_state_write(state);
+        } break;
+        case STATE_EDITOR_FIND_TEXT: {
             editor_render_state_write(state);
             console_render(state);
-        } else {
-            switch (state->editor.state) {
-            case EDITOR_STATE_WRITE: {
-                editor_render_state_write(state);
-            } break;
-            case EDITOR_STATE_READY_TO_PLAY: {
-                editor_save_file(state, filename);
-                state->compiler_result = compile(state);
-                if (state->compiler_result->error_type != NO_ERROR) {
-                    console_print_str(state, state->compiler_result->error_message);
-                    free_compiler_result(state);
-                    state->editor.state = EDITOR_STATE_WRITE;
-                    console_active = true;
-                    continue;
-                }
-                int synthesizer_error;
-                synthesizer = synthesizer_allocate(
-                    state->compiler_result->tones,
-                    state->compiler_result->tone_amount,
-                    &synthesizer_error
-                );
-                if (synthesizer_error) {
-                    exit(synthesizer_error);
-                }
-                synth_thread = thread_create(synthesizer_run, synthesizer);
-                if (synth_thread == NULL) {
-                    printf("Failed creating thread");
-                    exit(1);
-                }
-                is_playing = true;
-                state->editor.state = EDITOR_STATE_WAITING_TO_PLAY;
-            } break;
-            case EDITOR_STATE_WAITING_TO_PLAY: {
-                if (state->current_sound != NULL) {
-                    state->editor.state = EDITOR_STATE_PLAY;
-                    break;
-                }
-                editor_render_state_wait_to_play(state);
-            } break;
-            case EDITOR_STATE_PLAY: {
-                if (state->current_sound == NULL) {
-                    state->editor.state = EDITOR_STATE_WRITE;
-                    break;
-                }
-                editor_render_state_play(state);
-            } break;
-            case EDITOR_STATE_INTERRUPT: {
-                if (is_playing) {
-                    state->current_sound = NULL;
-                    synthesizer_cancel(synthesizer);
-                    thread_join(synth_thread);
-                    synthesizer_free(synthesizer);
-                    free_compiler_result(state);
-                    is_playing = false;
-                }
-                editor_load_file(state, filename);
-                state->editor.state = EDITOR_STATE_WRITE;
+        } break;
+        case STATE_TRY_COMPILE: {
+        } break;
+        case STATE_COMPILATION_ERROR: {
+            editor_render_state_write(state);
+            console_render(state);
+        } break;
+        case STATE_WAITING_TO_PLAY: {
+            if (state->current_sound != NULL) {
+                state->state = STATE_PLAY;
+                break;
             }
+            editor_render_state_wait_to_play(state);
+        } break;
+        case STATE_PLAY: {
+            if (state->current_sound == NULL) {
+                state->state = STATE_EDITOR_WRITE;
+                break;
             }
+            editor_render_state_play(state);
+        } break;
         }
 
         EndDrawing();

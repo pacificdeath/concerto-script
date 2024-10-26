@@ -3,7 +3,7 @@
 #include "raylib.h"
 #include "main.h"
 
-void console_print_str(State *state, char *text) {
+static void set_console_text(State *state, char *text) {
     for (int i = 0; i < CONSOLE_LINE_COUNT; i++) {
         state->console_text[i][0] = '\0';
     }
@@ -28,26 +28,38 @@ void console_print_str(State *state, char *text) {
 }
 
 void console_render(State *state) {
-    int console_x = state->window_width / 8;
-    int console_y = state->window_width / 8;
-    Rectangle rec = {
-        console_x,
-        console_y,
-        state->window_width - (2 * console_x),
-        state->window_height - (2 * console_y),
-    };
+    Rectangle rec;
+
+    int line_height = editor_line_height(state);
+    int char_width = editor_char_width(line_height);
+
     int rec_line_size = 5;
-    int lines = 20;
-    int line_height = rec.height / lines;
-    int char_width = line_height * 0.6;
+    int padding = rec_line_size * 2.0f;
+
+    switch (state->state) {
+    default:
+    case STATE_COMPILATION_ERROR: {
+        rec.x = (state->window_width * 0.25f) - padding;
+        rec.y = (state->window_height * 0.25f) - padding;
+        rec.width = (state->window_width * 0.5f) + (padding * 2.0f);
+        rec.height = (state->window_height * 0.5f) + (padding * 2.0f);
+    } break;
+    case STATE_EDITOR_FIND_TEXT: {
+        int width = char_width * EDITOR_FIND_MAX_LENGTH + 2;
+        rec.x = (state->window_width * 0.5f) - (width * 0.5f) - padding;
+        rec.y = (state->window_height * 0.7f) - padding;
+        rec.width = width + (padding * 2.0f);
+        rec.height = (state->window_height * 0.2f) + (padding * 2.0f);
+    } break;
+    }
+
     DrawRectangleRec(rec, CONSOLE_BG_COLOR);
     DrawRectangleLinesEx(rec, rec_line_size, CONSOLE_TEXT_COLOR);
-    int padding = 10;
     for (int i = 0; i < CONSOLE_LINE_COUNT; i += 1) {
         for (int j = 0; state->console_text[i][j] != '\0'; j += 1) {
             Vector2 position = {
-                padding + console_x + (j * char_width),
-                padding + console_y + (i * line_height)
+                padding + rec.x + (j * char_width),
+                padding + rec.y + (i * line_height)
             };
             DrawTextCodepoint(state->font, state->console_text[i][j], position, line_height, CONSOLE_TEXT_COLOR);
         }
