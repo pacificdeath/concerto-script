@@ -9,7 +9,7 @@ void sleep(u32 milliseconds) {
     Sleep(milliseconds);
 }
 
-int list_files(char *dir, char *buffer) {
+int list_files(char *dir, char *buffer, int max) {
     buffer[0] = '\0';
 
     WIN32_FIND_DATA find_data;
@@ -17,10 +17,11 @@ int list_files(char *dir, char *buffer) {
 
     char path[2048];
 
-    sprintf(path, "%s\\*.*", dir);
+    sprintf(path, "%s", dir);
     if ((handle = FindFirstFile(path, &find_data)) == INVALID_HANDLE_VALUE) {
         return 1;
     }
+    int amount = 0;
     do
     {
         if (strcmp(find_data.cFileName, ".") == 0 ||
@@ -30,6 +31,10 @@ int list_files(char *dir, char *buffer) {
         }
         strcat(buffer, find_data.cFileName);
         strcat(buffer, "\n");
+        amount++;
+        if (amount == max) {
+            break;
+        }
     }
     while(FindNextFile(handle, &find_data));
     FindClose(handle); //Always, Always, clean things up!

@@ -15,7 +15,6 @@
 #define SILENCE (MAX_NOTE + 1)
 
 #define EDITOR_MAX_VISUAL_LINES 30
-#define EDITOR_FILENAME_MAX_LENGTH 256
 #define EDITOR_LINE_CAPACITY 256
 #define EDITOR_LINE_MAX_LENGTH 64
 #define EDITOR_LINE_NUMBER_PADDING 5
@@ -25,9 +24,12 @@
 #define EDITOR_CURSOR_WIDTH 3
 #define EDITOR_CURSOR_ANIMATION_SPEED 10.0f
 #define EDITOR_SCROLL_MULTIPLIER 3
-#define EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH 32
-#define EDITOR_GO_TO_LINE_TEXT_MAX_LENGTH 5
-#define EDITOR_HISTORY_BUFFER_MAX 64
+#define EDITOR_FILE_SEARCH_BUFFER_MAX 32
+#define EDITOR_FILENAME_MAX_LENGTH 128
+#define EDITOR_FILENAMES_MAX_AMOUNT 10
+#define EDITOR_FINDER_BUFFER_MAX 32
+#define EDITOR_GO_TO_LINE_BUFFER_MAX 5
+#define EDITOR_UNDO_BUFFER_MAX 64
 #define EDITOR_NORMAL_COLOR (Color) { 255, 255, 255, 255 }
 #define EDITOR_PLAY_COLOR (Color) { 0, 255, 0, 255 }
 #define EDITOR_WAIT_COLOR (Color) { 255, 0, 0, 255 }
@@ -39,8 +41,8 @@
 #define EDITOR_LINENUMBER_COLOR (Color) { 128, 128, 128, 255 }
 #define EDITOR_COMMENT_COLOR (Color) { 128, 0, 255, 255 }
 
-#define CONSOLE_LINE_COUNT 8
-#define CONSOLE_LINE_MAX_LENGTH 64
+#define CONSOLE_LINE_COUNT 32
+#define CONSOLE_LINE_MAX_LENGTH 256
 #define CONSOLE_BG_COLOR (Color) {0, 0, 0, 255}
 #define CONSOLE_TEXT_COLOR (Color) {0, 255, 255, 255}
 
@@ -102,19 +104,24 @@ typedef struct Editor {
     int clipboard_line_count;
     char *clipboard;
 
-    char finder_buffer[EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH];
+    char file_search_buffer[EDITOR_FILE_SEARCH_BUFFER_MAX];
+    int file_search_buffer_length;
+    char filename_buffer[EDITOR_FILENAMES_MAX_AMOUNT * EDITOR_FILENAME_MAX_LENGTH];
+    int file_cursor;
+
+    char finder_buffer[EDITOR_FINDER_BUFFER_MAX];
     int finder_buffer_length;
     int finder_match_idx;
     int finder_matches;
 
-    char go_to_line_buffer[EDITOR_GO_TO_LINE_TEXT_MAX_LENGTH];
+    char go_to_line_buffer[EDITOR_GO_TO_LINE_BUFFER_MAX];
     int go_to_line_buffer_length;
 
     float cursor_anim_time;
 
     int undo_buffer_start;
     int undo_buffer_end;
-    Editor_Action undo_buffer[EDITOR_HISTORY_BUFFER_MAX];
+    Editor_Action undo_buffer[EDITOR_UNDO_BUFFER_MAX];
     int undo_buffer_size;
 } Editor;
 
@@ -258,7 +265,8 @@ typedef struct Synthesizer {
 
 typedef struct State {
     enum {
-        STATE_EDITOR_WRITE,
+        STATE_EDITOR,
+        STATE_EDITOR_FILE_EXPLORER,
         STATE_EDITOR_FIND_TEXT,
         STATE_EDITOR_GO_TO_LINE,
         STATE_TRY_COMPILE,
@@ -282,6 +290,8 @@ typedef struct State {
     Compiler_Result *compiler_result;
     Synthesizer_Sound *current_sound;
 } State;
+
+void console_set_text(State *state, char *text);
 
 int editor_line_height(State *state) {
     return state->window_height / EDITOR_MAX_VISUAL_LINES;

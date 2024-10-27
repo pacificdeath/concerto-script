@@ -3,7 +3,7 @@
 #include "raylib.h"
 #include "main.h"
 
-static void set_console_text(State *state, char *text) {
+void console_set_text(State *state, char *text) {
     for (int i = 0; i < CONSOLE_LINE_COUNT; i++) {
         state->console_text[i][0] = '\0';
     }
@@ -14,11 +14,23 @@ static void set_console_text(State *state, char *text) {
         switch (text[i]) {
         case '\0':
         case '\n':
+            #if DEBUG
+            if (current_line >= CONSOLE_LINE_COUNT - 2) {
+                printf("Console: NO! BAD LINE! VERY VERY BAD LINE!");
+                exit(1);
+            }
+            #endif
             state->console_text[current_line][current_char] = '\0';
             current_line++;
             current_char = 0;
             break;
         default:
+            #if DEBUG
+            if (current_char >= CONSOLE_LINE_MAX_LENGTH - 2) {
+                printf("Console: NO! BAD CHAR! VERY VERY BAD CHAR!");
+                exit(1);
+            }
+            #endif
             state->console_text[current_line][current_char] = text[i];
             current_char++;
             break;
@@ -38,6 +50,12 @@ void console_render(State *state) {
 
     switch (state->state) {
     default:
+    case STATE_EDITOR_FILE_EXPLORER: {
+        rec.x = (state->window_width * 0.1f) - padding;
+        rec.y = (state->window_height * 0.1f) - padding;
+        rec.width = (state->window_width * 0.8f) + (padding * 2.0f);
+        rec.height = (state->window_height * 0.8f) + (padding * 2.0f);
+    } break;
     case STATE_COMPILATION_ERROR: {
         rec.x = (state->window_width * 0.25f) - padding;
         rec.y = (state->window_height * 0.25f) - padding;
@@ -45,7 +63,7 @@ void console_render(State *state) {
         rec.height = (state->window_height * 0.5f) + (padding * 2.0f);
     } break;
     case STATE_EDITOR_FIND_TEXT: {
-        int width = char_width * (EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH + 1);
+        int width = char_width * (EDITOR_FINDER_BUFFER_MAX + 1);
         rec.x = (state->window_width * 0.5f) - (width * 0.5f) - padding;
         rec.y = (state->window_height * 0.7f) - padding;
         rec.width = width + (padding * 2.0f);

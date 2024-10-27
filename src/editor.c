@@ -123,28 +123,28 @@ static void delete_editor_string(State *state, Editor_Coord start, Editor_Coord 
 static char *copy_editor_string(State *state, Editor_Coord start, Editor_Coord end) {
     Editor *e = &state->editor;
     char *string = (char *)malloc(sizeof(char) * e->line_count * EDITOR_LINE_CAPACITY);
-    int history_idx = 0;
+    int str_idx = 0;
     if (start.y < end.y) {
         int delete_amount = end.y - start.y;
         for (int i = start.x; e->lines[start.y][i] != '\0'; i++) {
-            string[history_idx++] = e->lines[start.y][i];
+            string[str_idx++] = e->lines[start.y][i];
         }
-        string[history_idx++] = '\n';
+        string[str_idx++] = '\n';
         for (int i = start.y + 1; i < (start.y + delete_amount); i++) {
             for (int j = 0; e->lines[i][j] != '\0'; j++) {
-                string[history_idx++] = e->lines[i][j];
+                string[str_idx++] = e->lines[i][j];
             }
-            string[history_idx++] = '\n';
+            string[str_idx++] = '\n';
         }
         for (int i = 0; i < end.x; i++) {
-            string[history_idx++] = e->lines[end.y][i];
+            string[str_idx++] = e->lines[end.y][i];
         }
-        string[history_idx++] = '\0';
+        string[str_idx++] = '\0';
     } else {
         for (int i = start.x; i < end.x; i++) {
-            string[history_idx++] = e->lines[start.y][i];
+            string[str_idx++] = e->lines[start.y][i];
         }
-        string[history_idx++] = '\0';
+        string[str_idx++] = '\0';
     }
     return string;
 }
@@ -174,7 +174,7 @@ static void set_cursor_x(State *state, int x) {
     e->selection_x = x;
     e->selection_y = e->cursor.y;
     e->cursor_anim_time = 0.0;
-    if (state->state == STATE_EDITOR_WRITE) {
+    if (state->state == STATE_EDITOR) {
         snap_visual_vertical_offset_to_cursor(state);
     }
 }
@@ -185,7 +185,7 @@ static void set_cursor_y(State *state, int line) {
     e->selection_y = line;
     e->selection_x = e->cursor.x;
     e->cursor_anim_time = 0.0;
-    if (state->state == STATE_EDITOR_WRITE) {
+    if (state->state == STATE_EDITOR) {
         snap_visual_vertical_offset_to_cursor(state);
     }
 }
@@ -195,7 +195,7 @@ static void register_undo(State *state, Editor_Action_Type type, Editor_Coord co
 
     Editor_Action *action = &(e->undo_buffer[e->undo_buffer_end]);
 
-    bool wrap = e->undo_buffer_size == EDITOR_HISTORY_BUFFER_MAX;
+    bool wrap = e->undo_buffer_size == EDITOR_UNDO_BUFFER_MAX;
     if (wrap) {
         bool cleanup_needed = action->type == EDITOR_ACTION_DELETE_STRING;
         if (cleanup_needed) {
@@ -221,7 +221,7 @@ static void register_undo(State *state, Editor_Action_Type type, Editor_Coord co
     } break;
     }
 
-    e->undo_buffer_end = (e->undo_buffer_end + 1) % EDITOR_HISTORY_BUFFER_MAX;
+    e->undo_buffer_end = (e->undo_buffer_end + 1) % EDITOR_UNDO_BUFFER_MAX;
     if (e->undo_buffer_end == e->undo_buffer_start) {
         e->undo_buffer_start = e->undo_buffer_end;
     }
@@ -232,7 +232,7 @@ static void undo(State *state) {
     if (e->undo_buffer_size == 0) {
         return;
     }
-    e->undo_buffer_end = (e->undo_buffer_end + EDITOR_HISTORY_BUFFER_MAX - 1) % EDITOR_HISTORY_BUFFER_MAX;
+    e->undo_buffer_end = (e->undo_buffer_end + EDITOR_UNDO_BUFFER_MAX - 1) % EDITOR_UNDO_BUFFER_MAX;
     e->undo_buffer_size--;
     Editor_Action *action = &(e->undo_buffer[e->undo_buffer_end]);
     switch (action->type) {
@@ -622,7 +622,7 @@ void editor_free(State *state) {
     if (e->clipboard != NULL) {
         free(e->clipboard);
     }
-    for (int i = 0; i < EDITOR_HISTORY_BUFFER_MAX; i++) {
+    for (int i = 0; i < EDITOR_UNDO_BUFFER_MAX; i++) {
         Editor_Action *action = &(e->undo_buffer[i]);
         bool is_type_delete_selection = action->type == EDITOR_ACTION_DELETE_STRING;
         bool is_allocated = action->string != NULL;
@@ -733,6 +733,16 @@ static bool auto_click(State *state, KeyboardKey key) {
     return false;
 }
 
+void update_filename_buffer(State *state) {
+    Editor *e = &state->editor;
+    char filter[64];
+    sprintf(filter, "programs\\%s*.*", e->file_search_buffer);
+    int file_amount = list_files(filter, e->filename_buffer, EDITOR_FILENAMES_MAX_AMOUNT);
+    char console_text[EDITOR_FILENAMES_MAX_AMOUNT * EDITOR_FILENAME_MAX_LENGTH];
+    sprintf(console_text, "%s\n%s", e->file_search_buffer, e->filename_buffer);
+    console_set_text(state, console_text);
+}
+
 void editor_input(State *state) {
     Editor *e = &state->editor;
 
@@ -741,7 +751,12 @@ void editor_input(State *state) {
 
     switch (state->state) {
     default: break;
-    case STATE_EDITOR_WRITE: {
+    case STATE_EDITOR: {
+        if (ctrl && IsKeyPressed(KEY_O)) {
+            update_filename_buffer(state);
+            state->state = STATE_EDITOR_FILE_EXPLORER;
+            break;
+        }
         if (ctrl && IsKeyPressed(KEY_P)) {
             state->state = STATE_TRY_COMPILE;
             break;
@@ -947,14 +962,47 @@ void editor_input(State *state) {
             }
         }
     } break;
-    case STATE_COMPILATION_ERROR: {
-        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
-            state->state = STATE_EDITOR_WRITE;
+    case STATE_EDITOR_FILE_EXPLORER: {
+        bool should_update_list = false;
+        if (IsKeyPressed(KEY_ESCAPE)) {
+            e->file_search_buffer[0] = '\0';
+            e->file_search_buffer_length = 0;
+            e->file_cursor = 0;
+            state->state = STATE_EDITOR;
+        } else if (IsKeyPressed(KEY_DOWN)) {
+
+        } else if (IsKeyPressed(KEY_UP)) {
+
+        } else if (auto_click(state, KEY_BACKSPACE) && e->file_search_buffer_length > 0) {
+            e->file_search_buffer_length--;
+            e->file_search_buffer[e->file_search_buffer_length] = '\0';
+            should_update_list = true;
+        } else if (IsKeyPressed(KEY_ENTER)) {
+            char filename[128];
+            int i;
+            for (i = 0; e->filename_buffer[i] != '\n'; i++) {
+                filename[i] = e->filename_buffer[i];
+            }
+            filename[i] = '\0';
+            char filepath[128];
+            sprintf(filepath, "programs\\%s", filename);
+            editor_load_file(state, filepath);
+            e->file_search_buffer[0] = '\0';
+            e->file_search_buffer_length = 0;
+            e->file_cursor = 0;
+            state->state = STATE_EDITOR;
+        } else {
+            for (KeyboardKey key = 32; key < 127; key++) {
+                if (IsKeyPressed(key) && e->file_search_buffer_length < EDITOR_FINDER_BUFFER_MAX - 1) {
+                    e->file_search_buffer[e->file_search_buffer_length] = key;
+                    e->file_search_buffer_length++;
+                    e->file_search_buffer[e->file_search_buffer_length] = '\0';
+                    should_update_list = true;
+                }
+            }
         }
-    } break;
-    case STATE_PLAY: {
-        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
-            state->state = STATE_INTERRUPT;
+        if (should_update_list) {
+            update_filename_buffer(state);
         }
     } break;
     case STATE_EDITOR_FIND_TEXT: {
@@ -963,7 +1011,7 @@ void editor_input(State *state) {
             e->finder_buffer_length = 0;
             e->finder_match_idx = -1;
             e->finder_matches = 0;
-            state->state = STATE_EDITOR_WRITE;
+            state->state = STATE_EDITOR;
         } else if (auto_click(state, KEY_BACKSPACE) && e->finder_buffer_length > 0) {
             e->finder_match_idx = -1;
             e->finder_buffer_length--;
@@ -979,10 +1027,10 @@ void editor_input(State *state) {
             }
             go_to_finder_match_idx(state);
         } else {
-            for (char c = 32; c < 127; c++) {
-                if (IsKeyPressed(c) && e->finder_buffer_length < EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH - 1) {
+            for (KeyboardKey key = 32; key < 127; key++) {
+                if (IsKeyPressed(key) && e->finder_buffer_length < EDITOR_FINDER_BUFFER_MAX - 1) {
                     e->finder_match_idx = -1;
-                    e->finder_buffer[e->finder_buffer_length] = c;
+                    e->finder_buffer[e->finder_buffer_length] = key;
                     e->finder_buffer_length++;
                     e->finder_buffer[e->finder_buffer_length] = '\0';
                     update_finder_matches(state);
@@ -994,7 +1042,7 @@ void editor_input(State *state) {
         if (IsKeyPressed(KEY_ESCAPE)) {
             e->go_to_line_buffer[0] = '\0';
             e->go_to_line_buffer_length = 0;
-            state->state = STATE_EDITOR_WRITE;
+            state->state = STATE_EDITOR;
         } else if (auto_click(state, KEY_BACKSPACE) && e->go_to_line_buffer_length > 0) {
             e->go_to_line_buffer_length--;
             e->go_to_line_buffer[e->go_to_line_buffer_length] = '\0';
@@ -1008,17 +1056,27 @@ void editor_input(State *state) {
             set_cursor_y(state, line);
             set_cursor_x(state, 0);
             center_visual_vertical_offset_around_cursor(state);
-            state->state = STATE_EDITOR_WRITE;
+            state->state = STATE_EDITOR;
             e->go_to_line_buffer[0] = '\0';
             e->go_to_line_buffer_length = 0;
         } else {
-            for (char c = KEY_ZERO; c <= KEY_NINE; c++) {
-                if (IsKeyPressed(c) && e->go_to_line_buffer_length < (EDITOR_GO_TO_LINE_TEXT_MAX_LENGTH - 1)) {
-                    e->go_to_line_buffer[e->go_to_line_buffer_length] = c;
+            for (KeyboardKey key = KEY_ZERO; key <= KEY_NINE; key++) {
+                if (IsKeyPressed(key) && e->go_to_line_buffer_length < (EDITOR_GO_TO_LINE_BUFFER_MAX - 1)) {
+                    e->go_to_line_buffer[e->go_to_line_buffer_length] = key;
                     e->go_to_line_buffer_length++;
                     e->go_to_line_buffer[e->go_to_line_buffer_length] = '\0';
                 }
             }
+        }
+    } break;
+    case STATE_COMPILATION_ERROR: {
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
+            state->state = STATE_EDITOR;
+        }
+    } break;
+    case STATE_PLAY: {
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
+            state->state = STATE_INTERRUPT;
         }
     } break;
     }

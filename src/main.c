@@ -81,7 +81,7 @@ int main (int argc, char **argv) {
         switch (state->state) {
         default: break;
         case STATE_EDITOR_FIND_TEXT: {
-            char buffer[64 + EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH];
+            char buffer[64 + EDITOR_FINDER_BUFFER_MAX];
             if (state->editor.finder_match_idx >= 0) {
                 sprintf(
                     buffer,
@@ -95,18 +95,18 @@ int main (int argc, char **argv) {
             } else {
                 sprintf(buffer, "Find text:\n\"%s\"", state->editor.finder_buffer);
             }
-            set_console_text(state, buffer);
+            console_set_text(state, buffer);
         } break;
         case STATE_EDITOR_GO_TO_LINE: {
-            char buffer[64 + EDITOR_GO_TO_LINE_TEXT_MAX_LENGTH];
+            char buffer[64 + EDITOR_GO_TO_LINE_BUFFER_MAX];
             sprintf(buffer, "Go to line:\n[%s]", state->editor.go_to_line_buffer);
-            set_console_text(state, buffer);
+            console_set_text(state, buffer);
         } break;
         case STATE_TRY_COMPILE: {
             editor_save_file(state, filename);
             state->compiler_result = compile(state);
             if (state->compiler_result->error_type != NO_ERROR) {
-                set_console_text(state, state->compiler_result->error_message);
+                console_set_text(state, state->compiler_result->error_message);
                 compiler_result_free(state);
                 state->state = STATE_COMPILATION_ERROR;
                 continue;
@@ -138,11 +138,11 @@ int main (int argc, char **argv) {
                 is_playing = false;
             }
             editor_load_file(state, filename);
-            state->state = STATE_EDITOR_WRITE;
+            state->state = STATE_EDITOR;
         }
         }
 
-        if (is_playing && (!is_synthesizer_sound_playing(state->current_sound) || state->current_sound == NULL)) {
+        if (is_playing && (!is_synthesizer_sound_playing(state->current_sound))) {
             state->current_sound = synthesizer_try_pop(synthesizer);
             if (state->current_sound != NULL) {
                 PlaySound((state->current_sound->sound));
@@ -156,8 +156,12 @@ int main (int argc, char **argv) {
         default: {
 
         } break;
-        case STATE_EDITOR_WRITE: {
+        case STATE_EDITOR: {
             editor_render_state_write(state);
+        } break;
+        case STATE_EDITOR_FILE_EXPLORER: {
+            editor_render_state_write(state);
+            console_render(state);
         } break;
         case STATE_EDITOR_FIND_TEXT: {
             editor_render_state_write(state);
@@ -182,7 +186,7 @@ int main (int argc, char **argv) {
         } break;
         case STATE_PLAY: {
             if (state->current_sound == NULL) {
-                state->state = STATE_EDITOR_WRITE;
+                state->state = STATE_EDITOR;
                 break;
             }
             editor_render_state_play(state);
