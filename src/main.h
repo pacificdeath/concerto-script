@@ -27,6 +27,7 @@
 #define EDITOR_SCROLL_MULTIPLIER 3
 #define EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH 32
 #define EDITOR_GO_TO_LINE_TEXT_MAX_LENGTH 5
+#define EDITOR_HISTORY_BUFFER_MAX 64
 #define EDITOR_NORMAL_COLOR (Color) { 255, 255, 255, 255 }
 #define EDITOR_PLAY_COLOR (Color) { 0, 255, 0, 255 }
 #define EDITOR_WAIT_COLOR (Color) { 255, 0, 0, 255 }
@@ -59,6 +60,30 @@ typedef struct Tone {
     uint8_t octave;
 } Tone;
 
+typedef enum Editor_Action_Type {
+    EDITOR_ACTION_ADD_LINE,
+    EDITOR_ACTION_ADD_CHAR,
+    EDITOR_ACTION_DELETE_CHAR,
+    EDITOR_ACTION_DELETE_LINE,
+    EDITOR_ACTION_DELETE_STRING,
+    EDITOR_ACTION_ADD_STRING,
+} Editor_Action_Type;
+
+typedef struct Editor_Coord {
+    int y;
+    int x;
+} Editor_Coord;
+
+typedef struct Editor_Action {
+    Editor_Action_Type type;
+    Editor_Coord coord;
+    union {
+        char character;
+        char *string;
+        Editor_Coord extra_coord;
+    };
+} Editor_Action;
+
 typedef struct Editor {
     char current_file[EDITOR_FILENAME_MAX_LENGTH];
 
@@ -66,17 +91,16 @@ typedef struct Editor {
     char lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
     char word[EDITOR_LINE_MAX_LENGTH];
 
-    int cursor_x;
-    int cursor_line;
+    Editor_Coord cursor;
     int selection_x;
-    int selection_line;
+    int selection_y;
     int visual_vertical_offset;
 
     int autoclick_key;
     float autoclick_down_time;
 
     int clipboard_line_count;
-    char clipboard_lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
+    char *clipboard;
 
     char finder_buffer[EDITOR_FIND_MATCHES_TEXT_MAX_LENGTH];
     int finder_buffer_length;
@@ -87,10 +111,20 @@ typedef struct Editor {
     int go_to_line_buffer_length;
 
     float cursor_anim_time;
+
+    int undo_buffer_start;
+    int undo_buffer_end;
+    Editor_Action undo_buffer[EDITOR_HISTORY_BUFFER_MAX];
+    int undo_buffer_size;
 } Editor;
 
+typedef struct Editor_Selection_Data {
+    Editor_Coord start;
+    Editor_Coord end;
+} Editor_Selection_Data;
+
 typedef struct Editor_Cursor_Render_Data {
-    int line;
+    int y;
     int x;
     int line_number_offset;
     int visual_vertical_offset;
@@ -108,13 +142,6 @@ typedef struct Editor_Selection_Render_Data {
     int char_width;
     int line_height;
 } Editor_Selection_Render_Data;
-
-typedef struct Editor_Selection_Data {
-    int start_line;
-    int end_line;
-    int start_x;
-    int end_x;
-} Editor_Selection_Data;
 
 typedef enum Token_Type {
     TOKEN_NONE = 0,

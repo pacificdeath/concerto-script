@@ -714,7 +714,7 @@ Compiler_Result *compile(State *state) {
     return result;
 }
 
-void free_compiler_result(State *state) {
+void compiler_result_free(State *state) {
     Compiler_Result *cr = state->compiler_result;
     if (cr == NULL) {
         return;

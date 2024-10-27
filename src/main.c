@@ -107,7 +107,7 @@ int main (int argc, char **argv) {
             state->compiler_result = compile(state);
             if (state->compiler_result->error_type != NO_ERROR) {
                 set_console_text(state, state->compiler_result->error_message);
-                free_compiler_result(state);
+                compiler_result_free(state);
                 state->state = STATE_COMPILATION_ERROR;
                 continue;
             }
@@ -134,7 +134,7 @@ int main (int argc, char **argv) {
                 synthesizer_cancel(synthesizer);
                 thread_join(synth_thread);
                 synthesizer_free(synthesizer);
-                free_compiler_result(state);
+                compiler_result_free(state);
                 is_playing = false;
             }
             editor_load_file(state, filename);
@@ -195,8 +195,8 @@ int main (int argc, char **argv) {
     UnloadFont(state->font);
     CloseWindow();
     CloseAudioDevice();
-    if (state->compiler_result != NULL) {
-        free_compiler_result(state);
-    }
+
+    compiler_result_free(state);
+    editor_free(state);
     free(state);
 }

@@ -10,20 +10,20 @@ set LIST_TOKENS=""
 set LIST_FREQUENCIES=""
 
 for %%x in (%*) do (
-    if "%%x"=="-help" (
+    if "%%x"=="help" (
         goto :help
-    ) else if "%%x"=="-debug" (
+    ) else if "%%x"=="d" (
         set DEBUG=%D%
-    ) else if "%%x"=="-gdb" (
+    ) else if "%%x"=="g" (
         set GDB=1
         set DEBUG=%D%
-    ) else if "%%x"=="-test-thread" (
+    ) else if "%%x"=="test-thread" (
         set DEBUG=%D%
         set TEST_THREAD="-DTEST_THREAD"
-    ) else if "%%x"=="-list-token" (
+    ) else if "%%x"=="list-token" (
         set DEBUG=%D%
         set LIST_TOKENS="-DLIST_TOKENS"
-    ) else if "%%x"=="-list-freq" (
+    ) else if "%%x"=="list-freq" (
         set DEBUG=%D%
         set LIST_FREQUENCIES="-DLIST_FREQUENCIES"
     ) else (
@@ -90,12 +90,12 @@ goto :end
 :help
     echo %0 ^[Options^] ^<Program File^>
     echo Options:
-    echo    -help           this thing
-    echo    -debug          enable debug
-    echo    -gdb            run gdb after compiliation
-    echo    -test-thread    test multithreading
-    echo    -list-tok       print internal compiler tokens to console
-    echo    -list-freq      print internal compiler frequencies to console
+    echo    help           this thing
+    echo    d              enable debug
+    echo    g              run gdb after compiliation
+    echo    test-thread    test multithreading
+    echo    list-tok       print internal compiler tokens to console
+    echo    list-freq      print internal compiler frequencies to console
 goto :end
 
 :end
