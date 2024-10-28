@@ -1,47 +1,47 @@
-SCALE (C D E F G A B)
+scale (c d e f g a b)
 
-E5
+e5
 
-REPEAT 4 (
-    DURATION 8 PLAY
-    DURATION 16
-    WAIT
-    RISE 2
-    PLAY PLAY WAIT
-    FALL 2
-    PLAY WAIT
-    DURATION 8
-    PLAY
-    DURATION 16
-    FALL
-    PLAY WAIT
-    ROUNDS 1 3 (
-        DURATION 8
-        PLAY
-        DURATION 16
-        FALL
-        PLAY WAIT
-        RISE 2
+repeat 4 (
+    duration 8 play
+    duration 16
+    wait
+    rise 2
+    play play wait
+    fall 2
+    play wait
+    duration 8
+    play
+    duration 16
+    fall
+    play wait
+    rounds 1 3 (
+        duration 8
+        play
+        duration 16
+        fall
+        play wait
+        rise 2
     )
-    ROUNDS 4 2 (
-        DURATION 16
-        FALL
-        PLAY WAIT
-        RISE 2
-    )
-)
-
-A5 REPEAT 3 (
-    DURATION 4
-    PLAY RISE 2 PLAY
-    DURATION 8
-    REPEAT 2 (
-        FALL PLAY FALL 2 PLAY RISE PLAY
-        ROUNDS 1 (RISE 2 PLAY)
-        ROUNDS 2 (FALL 2)
+    rounds 4 2 (
+        duration 16
+        fall
+        play wait
+        rise 2
     )
 )
-BB4
-DURATION 1
-PLAY
+
+a5 repeat 3 (
+    duration 4
+    play rise 2 play
+    duration 8
+    repeat 2 (
+        fall play fall 2 play rise play
+        rounds 1 (rise 2 play)
+        rounds 2 (fall 2)
+    )
+)
+bb4
+duration 1
+play
 

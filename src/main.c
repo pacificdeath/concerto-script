@@ -80,28 +80,6 @@ int main (int argc, char **argv) {
 
         switch (state->state) {
         default: break;
-        case STATE_EDITOR_FIND_TEXT: {
-            char buffer[64 + EDITOR_FINDER_BUFFER_MAX];
-            if (state->editor.finder_match_idx >= 0) {
-                sprintf(
-                    buffer,
-                    "Find text:\n\"%s\"\nMatch %i of %i",
-                    state->editor.finder_buffer,
-                    state->editor.finder_match_idx + 1,
-                    state->editor.finder_matches
-                );
-            } else if (state->editor.finder_buffer_length > 0) {
-                sprintf(buffer, "Find text:\n\"%s\"\nFound %i matches", state->editor.finder_buffer, state->editor.finder_matches);
-            } else {
-                sprintf(buffer, "Find text:\n\"%s\"", state->editor.finder_buffer);
-            }
-            console_set_text(state, buffer);
-        } break;
-        case STATE_EDITOR_GO_TO_LINE: {
-            char buffer[64 + EDITOR_GO_TO_LINE_BUFFER_MAX];
-            sprintf(buffer, "Go to line:\n[%s]", state->editor.go_to_line_buffer);
-            console_set_text(state, buffer);
-        } break;
         case STATE_TRY_COMPILE: {
             editor_save_file(state, filename);
             state->compiler_result = compile(state);
@@ -150,7 +128,7 @@ int main (int argc, char **argv) {
         }
 
         BeginDrawing();
-        ClearBackground(BLACK);
+        ClearBackground(EDITOR_BG_COLOR);
 
         switch (state->state) {
         default: {
@@ -159,20 +137,9 @@ int main (int argc, char **argv) {
         case STATE_EDITOR: {
             editor_render_state_write(state);
         } break;
-        case STATE_EDITOR_FILE_EXPLORER: {
-            editor_render_state_write(state);
-            console_render(state);
-        } break;
-        case STATE_EDITOR_FIND_TEXT: {
-            editor_render_state_write(state);
-            console_render(state);
-        } break;
-        case STATE_EDITOR_GO_TO_LINE: {
-            editor_render_state_write(state);
-            console_render(state);
-        } break;
-        case STATE_TRY_COMPILE: {
-        } break;
+        case STATE_EDITOR_FILE_EXPLORER:
+        case STATE_EDITOR_FIND_TEXT:
+        case STATE_EDITOR_GO_TO_LINE:
         case STATE_COMPILATION_ERROR: {
             editor_render_state_write(state);
             console_render(state);

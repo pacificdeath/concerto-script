@@ -5,6 +5,27 @@
 #include "raylib.h"
 #include "main.h"
 
+static bool is_alphabetic(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static bool is_uppercase(char c) {
+    return (c >= 'A' && c <= 'Z');
+}
+
+static char uppercase_on_condition(char character, bool condition) {
+    if (is_uppercase(character)) {
+        if (condition) {
+            return character;
+        }
+        return character + 32;
+    }
+    if (condition) {
+        return character - 32;
+    }
+    return character;
+}
+
 static void add_editor_line(State *state, Editor_Coord coord) {
     Editor *e = &state->editor;
     e->line_count += 1;
@@ -337,58 +358,6 @@ static bool cursor_delete_selection(State *state) {
     return true;
 }
 
-static void update_finder_matches(State *state) {
-    Editor *e = &state->editor;
-    if (e->finder_buffer_length == 0) {
-        e->finder_matches = 0;
-    }
-    int matches = 0;
-    for (int i = 0; i < e->line_count; i++) {
-        int s_idx = 0;
-        for (int j = 0; e->lines[i][j] != '\0'; j++) {
-            if (e->lines[i][j] == e->finder_buffer[s_idx]) {
-                s_idx++;
-                if (s_idx == e->finder_buffer_length) {
-                    matches++;
-                    s_idx = 0;
-                    break;
-                }
-            } else {
-                s_idx = 0;
-            }
-        }
-    }
-    e->finder_matches = matches;
-}
-
-static void go_to_finder_match_idx(State *state) {
-    Editor *e = &state->editor;
-
-    int match_idx = 0;
-
-    for (int i = 0; i < e->line_count; i++) {
-        int s_idx = 0;
-        for (int j = 0; e->lines[i][j] != '\0'; j++) {
-            if (e->lines[i][j] == e->finder_buffer[s_idx]) {
-                s_idx++;
-                if (s_idx == e->finder_buffer_length) {
-                    if (match_idx == e->finder_match_idx) {
-                        set_cursor_y(state, i);
-                        int match_end = j + 1;
-                        set_cursor_x(state, match_end - e->finder_buffer_length);
-                        set_cursor_selection_x(state, match_end);
-                        center_visual_vertical_offset_around_cursor(state);
-                        return;
-                    }
-                    match_idx++;
-                }
-            } else {
-                s_idx = 0;
-            }
-        }
-    }
-}
-
 static void go_to_definition(State *state) {
     Editor *e = &state->editor;
 
@@ -614,7 +583,7 @@ void editor_init(State *state) {
     Editor *e = &state->editor;
     e->line_count = 1;
     e->autoclick_key = KEY_NULL;
-    e->finder_match_idx = -1;
+    state->editor.finder_match_idx = -1;
 }
 
 void editor_free(State *state) {
@@ -743,6 +712,41 @@ void update_filename_buffer(State *state) {
     console_set_text(state, console_text);
 }
 
+void finder_update_matches(State *state) {
+    Editor *e = &state->editor;
+
+    if (e->finder_buffer_length == 0) {
+        e->finder_matches = 0;
+    }
+    int matches = 0;
+    for (int i = 0; i < e->line_count; i++) {
+        int s_idx = 0;
+        for (int j = 0; e->lines[i][j] != '\0'; j++) {
+            if (e->lines[i][j] == e->finder_buffer[s_idx]) {
+                s_idx++;
+                if (s_idx == e->finder_buffer_length) {
+                    matches++;
+                    s_idx = 0;
+                    break;
+                }
+            } else {
+                s_idx = 0;
+            }
+        }
+    }
+    e->finder_matches = matches;
+
+    if (matches > 0) {
+        char buffer[64 + EDITOR_FINDER_BUFFER_MAX];
+        sprintf(buffer, "Find text:\n\"%s\"\nFound %i matches", state->editor.finder_buffer, state->editor.finder_matches);
+        console_set_text(state, buffer);
+    } else {
+        char buffer[64 + EDITOR_FINDER_BUFFER_MAX];
+        sprintf(buffer, "Find text:\n\"%s\"", state->editor.finder_buffer);
+        console_set_text(state, buffer);
+    }
+}
+
 void editor_input(State *state) {
     Editor *e = &state->editor;
 
@@ -750,32 +754,32 @@ void editor_input(State *state) {
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
 
     switch (state->state) {
-    default: break;
+    default: return;
     case STATE_EDITOR: {
         if (ctrl && IsKeyPressed(KEY_O)) {
             update_filename_buffer(state);
             state->state = STATE_EDITOR_FILE_EXPLORER;
-            break;
+            return;
         }
         if (ctrl && IsKeyPressed(KEY_P)) {
             state->state = STATE_TRY_COMPILE;
-            break;
+            return;
         }
         if (ctrl && auto_click(state, KEY_Z)) {
             undo(state);
-            break;
+            return;
         }
         if (ctrl && IsKeyPressed(KEY_F)) {
             state->state = STATE_EDITOR_FIND_TEXT;
-            break;
+            return;
         }
         if (ctrl && IsKeyPressed(KEY_G)) {
             state->state = STATE_EDITOR_GO_TO_LINE;
-            break;
+            return;
         }
         if (ctrl && IsKeyPressed(KEY_D)) {
             go_to_definition(state);
-            break;
+            return;
         }
         float scroll = GetMouseWheelMove();
 
@@ -831,25 +835,31 @@ void editor_input(State *state) {
             paste_clipboard(state);
             return;
         }
-        for (char c = 32; c < 127; c++) {
-            if (IsKeyPressed(c) && e->cursor.x < EDITOR_LINE_MAX_LENGTH - 2 && e->cursor.x < EDITOR_LINE_MAX_LENGTH - 1) {
-                if (shift) {
-                    switch (c) {
-                    case '1':
+        for (KeyboardKey key = 32; key < 127; key++) {
+            if (IsKeyPressed(key) && e->cursor.x < EDITOR_LINE_MAX_LENGTH - 2 && e->cursor.x < EDITOR_LINE_MAX_LENGTH - 1) {
+                if (is_alphabetic(key)) {
+                    char c = uppercase_on_condition(key, shift);
+                    cursor_add_char(state, c);
+                    return;
+                } else if (shift) {
+                    switch (key) {
+                    default: return;
+                    case '1': {
                         cursor_add_char(state, '!');
-                        return;
-                    case '3':
+                    } return;
+                    case '3': {
                         cursor_add_char(state, '#');
-                        return;
-                    case '9':
+                    } return;
+                    case '9': {
                         cursor_add_char(state, '(');
-                        return;
-                    case '0':
+                    } return;
+                    case '0': {
                         cursor_add_char(state, ')');
-                        return;
+                    } return;
                     }
                 } else {
-                    cursor_add_char(state, c);
+                    cursor_add_char(state, key);
+                    return;
                 }
             } else {
                 // TODO: this is currently a silent failure and it should not at all be that
@@ -912,7 +922,9 @@ void editor_input(State *state) {
                     }
                 }
             }
-            if (bad) { return; }
+            if (bad) {
+                return;
+            }
             if (shift) {
                 for (int i = 0; i < spaces_len; i++) {
                     int line_idx = start_line + i;
@@ -961,9 +973,8 @@ void editor_input(State *state) {
                 trigger_key(state, key, ctrl, shift);
             }
         }
-    } break;
+    } return;
     case STATE_EDITOR_FILE_EXPLORER: {
-        bool should_update_list = false;
         if (IsKeyPressed(KEY_ESCAPE)) {
             e->file_search_buffer[0] = '\0';
             e->file_search_buffer_length = 0;
@@ -976,7 +987,8 @@ void editor_input(State *state) {
         } else if (auto_click(state, KEY_BACKSPACE) && e->file_search_buffer_length > 0) {
             e->file_search_buffer_length--;
             e->file_search_buffer[e->file_search_buffer_length] = '\0';
-            should_update_list = true;
+            update_filename_buffer(state);
+            return;
         } else if (IsKeyPressed(KEY_ENTER)) {
             char filename[128];
             int i;
@@ -993,18 +1005,17 @@ void editor_input(State *state) {
             state->state = STATE_EDITOR;
         } else {
             for (KeyboardKey key = 32; key < 127; key++) {
-                if (IsKeyPressed(key) && e->file_search_buffer_length < EDITOR_FINDER_BUFFER_MAX - 1) {
-                    e->file_search_buffer[e->file_search_buffer_length] = key;
+                if (IsKeyPressed(key) && e->file_search_buffer_length < EDITOR_FILE_SEARCH_BUFFER_MAX - 1) {
+                    char c = uppercase_on_condition(key, shift);
+                    e->file_search_buffer[e->file_search_buffer_length] = c;
                     e->file_search_buffer_length++;
                     e->file_search_buffer[e->file_search_buffer_length] = '\0';
-                    should_update_list = true;
+                    update_filename_buffer(state);
+                    return;
                 }
             }
         }
-        if (should_update_list) {
-            update_filename_buffer(state);
-        }
-    } break;
+    } return;
     case STATE_EDITOR_FIND_TEXT: {
         if (IsKeyPressed(KEY_ESCAPE)) {
             e->finder_buffer[0] = '\0';
@@ -1016,8 +1027,11 @@ void editor_input(State *state) {
             e->finder_match_idx = -1;
             e->finder_buffer_length--;
             e->finder_buffer[e->finder_buffer_length] = '\0';
-            update_finder_matches(state);
+            finder_update_matches(state);
         } else if (IsKeyPressed(KEY_ENTER)) {
+            if (e->finder_buffer_length == 0 || e->finder_matches == 0) {
+                return;
+            }
             if (e->finder_match_idx == -1) {
                 e->finder_match_idx = 0;
             } else if (shift) {
@@ -1025,28 +1039,64 @@ void editor_input(State *state) {
             } else {
                 e->finder_match_idx = (e->finder_match_idx + 1) % e->finder_matches;
             }
-            go_to_finder_match_idx(state);
+            int match_idx = 0;
+            for (int i = 0; i < e->line_count; i++) {
+                int s_idx = 0;
+                for (int j = 0; e->lines[i][j] != '\0'; j++) {
+                    if (e->lines[i][j] == e->finder_buffer[s_idx]) {
+                        s_idx++;
+                        if (s_idx == e->finder_buffer_length) {
+                            if (match_idx == e->finder_match_idx) {
+                                set_cursor_y(state, i);
+                                int match_end = j + 1;
+                                set_cursor_x(state, match_end - e->finder_buffer_length);
+                                set_cursor_selection_x(state, match_end);
+                                center_visual_vertical_offset_around_cursor(state);
+                                return;
+                            }
+                            match_idx++;
+                        }
+                    } else {
+                        s_idx = 0;
+                    }
+                }
+            }
+            char buffer[64 + EDITOR_FINDER_BUFFER_MAX];
+            sprintf(
+                buffer,
+                "Find text:\n\"%s\"\nMatch %i of %i",
+                state->editor.finder_buffer,
+                state->editor.finder_match_idx + 1,
+                state->editor.finder_matches
+            );
+            console_set_text(state, buffer);
         } else {
             for (KeyboardKey key = 32; key < 127; key++) {
                 if (IsKeyPressed(key) && e->finder_buffer_length < EDITOR_FINDER_BUFFER_MAX - 1) {
                     e->finder_match_idx = -1;
-                    e->finder_buffer[e->finder_buffer_length] = key;
+                    char c = uppercase_on_condition(key, shift);
+                    e->finder_buffer[e->finder_buffer_length] = c;
                     e->finder_buffer_length++;
                     e->finder_buffer[e->finder_buffer_length] = '\0';
-                    update_finder_matches(state);
+                    finder_update_matches(state);
+                    return;
                 }
             }
         }
-    } break;
+    } return;
     case STATE_EDITOR_GO_TO_LINE: {
         if (IsKeyPressed(KEY_ESCAPE)) {
             e->go_to_line_buffer[0] = '\0';
             e->go_to_line_buffer_length = 0;
             state->state = STATE_EDITOR;
+            return;
         } else if (auto_click(state, KEY_BACKSPACE) && e->go_to_line_buffer_length > 0) {
             e->go_to_line_buffer_length--;
             e->go_to_line_buffer[e->go_to_line_buffer_length] = '\0';
         } else if (IsKeyPressed(KEY_ENTER)) {
+            if (e->go_to_line_buffer_length == 0) {
+                return;
+            }
             int line = TextToInteger(e->go_to_line_buffer) - 1;
             if (line >= e->line_count) {
                 line = e->line_count - 1;
@@ -1065,20 +1115,24 @@ void editor_input(State *state) {
                     e->go_to_line_buffer[e->go_to_line_buffer_length] = key;
                     e->go_to_line_buffer_length++;
                     e->go_to_line_buffer[e->go_to_line_buffer_length] = '\0';
+                    break;
                 }
             }
         }
-    } break;
+        char buffer[64 + EDITOR_GO_TO_LINE_BUFFER_MAX];
+        sprintf(buffer, "Go to line:\n[%s]", state->editor.go_to_line_buffer);
+        console_set_text(state, buffer);
+    } return;
     case STATE_COMPILATION_ERROR: {
         if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
             state->state = STATE_EDITOR;
         }
-    } break;
+    } return;
     case STATE_PLAY: {
         if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
             state->state = STATE_INTERRUPT;
         }
-    } break;
+    } return;
     }
 }
 
@@ -1106,9 +1160,52 @@ static void render_selection(Editor_Selection_Render_Data data) {
     );
 }
 
+static bool is_note_at_coord(State *state, Editor_Coord coord) {
+    Editor *e = &state->editor;
+    char c = e->lines[coord.y][coord.x];
+
+    bool first_char_is_valid = 
+        (c >= 'a' && c <= 'g') ||
+        (c >= 'A' && c <= 'G');
+
+    if (!first_char_is_valid) {
+        return false;
+    }
+
+    bool has_explicit_octave = false;
+    for (int offset = 1; offset < 4; offset++) {
+        char offset_char = e->lines[coord.y][coord.x + offset];
+        switch (offset_char) {
+        case '#':
+        case 'b':
+        case 'B': {
+            // accidental must as of now precede explicit octave
+            if (has_explicit_octave) {
+                return false;
+            }
+        } break;
+        default: {
+            if (offset_char >= '0' && offset_char <= '8') {
+                has_explicit_octave = true;
+            } else if (is_alphabetic(offset_char)) {
+                return false;
+            }
+        } break;
+        case ' ':
+        case '\0': {
+            return true;
+        }
+        }
+    }
+
+    return true;
+}
+
 static void editor_render_base(State *state, float line_height, float char_width, int line_number_padding) {
     Editor *e = &state->editor;
     char line_number_str[EDITOR_LINE_NUMBER_PADDING];
+
+    char current_word[EDITOR_LINE_MAX_LENGTH];
 
     for (int i = 0; i < EDITOR_MAX_VISUAL_LINES; i++) {
         int line_idx = e->visual_vertical_offset + i;
@@ -1132,42 +1229,60 @@ static void editor_render_base(State *state, float line_height, float char_width
         for (int j = 0; e->lines[line_idx][j] != '\0'; j++) {
             char c = e->lines[line_idx][j];
 
-            if (found_word && !isalpha(c)) {
-                found_word = false;
-                color = EDITOR_NORMAL_COLOR;
+            if (found_word) {
+                switch (c) {
+                default: break;
+                case '(':
+                case ')':
+                case ' ':
+                case '\0':
+                {
+                    found_word = false;
+                    color = EDITOR_NORMAL_COLOR;
+                } break;
+                }
             }
 
             if (!rest_is_comment && !found_word) {
-                if (isalpha(c)) {
+                if (is_alphabetic(c)) {
                     found_word = true;
-                    int char_offset;
-                    for (
-                        char_offset = 0;
-                        !isspace(e->lines[line_idx][j + char_offset]) &&
-                        is_valid_in_identifier(e->lines[line_idx][j + char_offset]);
-                        char_offset += 1
-                    ) {
-                        e->word[char_offset] = e->lines[line_idx][j + char_offset];
-                    }
-                    e->word[char_offset] = '\0';
-                    if (strcmp(e->word, "PLAY") == 0) {
-                        color = EDITOR_PLAY_COLOR;
-                    } else if (strcmp(e->word, "WAIT") == 0) {
-                        color = EDITOR_WAIT_COLOR;
-                    } else if (
-                        strcmp(e->word, "START") == 0 ||
-                        strcmp(e->word, "DEFINE") == 0 ||
-                        strcmp(e->word, "REPEAT") == 0 ||
-                        strcmp(e->word, "ROUNDS") == 0 ||
-                        strcmp(e->word, "SEMI") == 0 ||
-                        strcmp(e->word, "BPM") == 0 ||
-                        strcmp(e->word, "DURATION") == 0 ||
-                        strcmp(e->word, "SCALE") == 0 ||
-                        strcmp(e->word, "RISE") == 0 ||
-                        strcmp(e->word, "FALL") == 0) {
-                        color = EDITOR_KEYWORD_COLOR;
+
+                    Editor_Coord coord = { .y = line_idx, .x = j };
+                    bool is_note = is_note_at_coord(state, coord);
+
+                    if (is_note) {
+                        color = EDITOR_NOTE_COLOR;
                     } else {
-                        color = EDITOR_NORMAL_COLOR;
+                        int char_offset;
+                        for (
+                            char_offset = 0;
+                            !isspace(e->lines[line_idx][j + char_offset]) &&
+                            is_valid_in_identifier(e->lines[line_idx][j + char_offset]);
+                            char_offset += 1
+                        ) {
+                            current_word[char_offset] = e->lines[line_idx][j + char_offset];
+                        }
+                        current_word[char_offset] = '\0';
+
+                        if (strcmp(current_word, "play") == 0) {
+                            color = EDITOR_PLAY_COLOR;
+                        } else if (strcmp(current_word, "wait") == 0) {
+                            color = EDITOR_WAIT_COLOR;
+                        } else if (
+                            strcmp(current_word, "start") == 0 ||
+                            strcmp(current_word, "define") == 0 ||
+                            strcmp(current_word, "repeat") == 0 ||
+                            strcmp(current_word, "rounds") == 0 ||
+                            strcmp(current_word, "semi") == 0 ||
+                            strcmp(current_word, "bpm") == 0 ||
+                            strcmp(current_word, "duration") == 0 ||
+                            strcmp(current_word, "scale") == 0 ||
+                            strcmp(current_word, "rise") == 0 ||
+                            strcmp(current_word, "fall") == 0) {
+                            color = EDITOR_KEYWORD_COLOR;
+                        } else {
+                            color = EDITOR_NORMAL_COLOR;
+                        }
                     }
                 } else {
                     switch (c) {
@@ -1311,13 +1426,13 @@ void editor_render_state_play(State *state) {
 
     rec.height = (2 * rec_line_size) + line_height;
 
-    Color color = { .b = 255, .a = 255 };
+    Color color = { .g = 0, .a = 255 };
     if (tone->idx % 2 == 0) {
         color.r = 255;
-        color.g = 0;
+        color.b = 0;
     } else {
         color.r = 0;
-        color.g = 255;
+        color.b = 255;
     }
     DrawRectangleLinesEx(rec, 5, color);
 }

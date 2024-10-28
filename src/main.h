@@ -30,16 +30,18 @@
 #define EDITOR_FINDER_BUFFER_MAX 32
 #define EDITOR_GO_TO_LINE_BUFFER_MAX 5
 #define EDITOR_UNDO_BUFFER_MAX 64
-#define EDITOR_NORMAL_COLOR (Color) { 255, 255, 255, 255 }
-#define EDITOR_PLAY_COLOR (Color) { 0, 255, 0, 255 }
-#define EDITOR_WAIT_COLOR (Color) { 255, 0, 0, 255 }
-#define EDITOR_KEYWORD_COLOR (Color) { 0, 128, 255, 255 }
-#define EDITOR_PAREN_COLOR (Color) { 255, 192, 0, 255 }
-#define EDITOR_SPACE_COLOR (Color) { 64, 64, 64, 255 }
-#define EDITOR_CURSOR_COLOR (Color) { 255, 0, 255, 255 }
-#define EDITOR_SELECTION_COLOR (Color) { 0, 128, 255, 128 }
-#define EDITOR_LINENUMBER_COLOR (Color) { 128, 128, 128, 255 }
-#define EDITOR_COMMENT_COLOR (Color) { 128, 0, 255, 255 }
+#define EDITOR_BG_COLOR             (Color) { 0x00, 0x00, 0x00, 0xFF }
+#define EDITOR_NORMAL_COLOR         (Color) { 0xFF, 0xFF, 0xFF, 0xFF }
+#define EDITOR_PLAY_COLOR           (Color) { 0x00, 0xff, 0x88, 0xff }
+#define EDITOR_WAIT_COLOR           EDITOR_PLAY_COLOR
+#define EDITOR_KEYWORD_COLOR        (Color) { 0xbb, 0x88, 0xff, 0xff }
+#define EDITOR_NOTE_COLOR           (Color) { 0xff, 0xbb, 0x00, 0xff }
+#define EDITOR_PAREN_COLOR          (Color) { 0x66, 0x44, 0x88, 0xff }
+#define EDITOR_SPACE_COLOR          (Color) { 0X44, 0X44, 0X44, 0XFF }
+#define EDITOR_COMMENT_COLOR        EDITOR_SPACE_COLOR
+#define EDITOR_LINENUMBER_COLOR     (Color) { 0X88, 0X88, 0X88, 0XFF }
+#define EDITOR_CURSOR_COLOR         (Color) { 0X00, 0XFF, 0XFF, 0XFF }
+#define EDITOR_SELECTION_COLOR      (Color) { 0X00, 0X88, 0XFF, 0X88 }
 
 #define CONSOLE_LINE_COUNT 32
 #define CONSOLE_LINE_MAX_LENGTH 256
@@ -91,7 +93,6 @@ typedef struct Editor {
 
     int line_count;
     char lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
-    char word[EDITOR_LINE_MAX_LENGTH];
 
     Editor_Coord cursor;
     int selection_x;

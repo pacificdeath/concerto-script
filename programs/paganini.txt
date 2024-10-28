@@ -1,0 +1,170 @@
+define aminor ( scale ( a b c d e f g ) )
+define emajor ( scale ( e f# g# a b c# d# ) )
+define dminor ( scale ( d e f g a a# c ) )
+
+define aminchord ( scale ( a c e ) )
+define emajchord ( scale ( e g b ) )
+define amajchord ( scale ( a c# e ) )
+define dmajchord ( scale ( d f# a ) )
+define gmajchord ( scale ( g b d ) )
+define cmajchord ( scale ( c e g ) )
+define dimchord  ( scale ( f g# b d ) )
+
+duration 16
+
+define motif1 (
+    play play rise 2 play fall play fall play
+)
+
+define motif2 (
+    play play rise play fall play fall play rise
+)
+
+define section1 (
+    repeat 2 (
+        aminor
+        a play wait wait motif1
+        emajor
+        e5 play wait wait e motif1
+        aminor
+        a play wait wait motif1
+        e5 play repeat 3(wait) e play repeat 3(wait)
+    )
+)
+
+define section2 (
+    dminor
+    a5
+    repeat 2 (
+        play wait wait motif2 fall 2
+        play wait wait fall 2 motif1 rise 3
+    )
+    play wait wait fall 4
+)
+
+define section3 (
+    aminor
+    b motif1 rise 3
+    play wait wait fall 4
+    motif1 fall 2
+    play wait rise 5 play fall 6
+    play rise 6 rise
+    play fall
+    play fall 2
+    play fall
+    play repeat 3(wait)
+)
+
+define arpeg1 (
+    duration 32
+    play rise
+    play rise
+    duration 16
+    repeat 6 (play fall)
+    rise 3
+)
+
+define arpeg2 (
+    duration 32
+    play rise
+    play rise
+    duration 16
+    repeat 6 (play rise)
+    fall 6
+)
+
+define arpeg3 (
+    duration 32
+    play fall
+    play fall
+    duration 16
+    repeat 6 (play fall)
+    rise 8
+)
+
+define section4 (
+    repeat 2 (
+        aminchord
+        a5 arpeg1
+        emajchord
+        g5 arpeg1
+        aminchord
+        a5 arpeg1
+        e5 play repeat 3(wait) e play repeat 3(wait)
+    )
+    amajchord
+    c#6 arpeg1
+    dmajchord
+    d arpeg2
+    gmajchord
+    b5 arpeg1
+    cmajchord
+    c arpeg2
+    dimchord
+    f6 arpeg3
+    aminchord
+    e6 arpeg3
+    duration 32
+    d play
+    f play
+    duration 16
+    b play
+    d5 play
+    f5 play
+    e play
+    e5 play
+    g# play
+    a play repeat 3(wait)
+)
+
+define thr (
+    duration 16
+    repeat 2 (
+        play semi fall
+        play rise
+    )
+    duration 32
+    semi rise play
+    fall play
+    duration 16
+)
+
+define section5 (
+    repeat 2 (
+    aminor
+    a
+    thr
+    repeat 3 (rise play)
+    rise
+    thr
+    repeat 3 (fall play)
+    fall
+    thr
+    repeat 3 (rise play)
+    rise
+    thr wait
+    fall 7
+    play wait
+    )
+)
+
+define section6 (
+    a5
+    dminor
+    repeat 2 (
+    thr
+    repeat 3 (fall play)
+    fall
+    thr
+    rise play rise play fall 2 play
+    rise 3
+    )
+)
+bpm 150
+section1
+section2
+section3
+section4
+section5
+section6
+

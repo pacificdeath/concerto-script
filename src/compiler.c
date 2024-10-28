@@ -8,12 +8,7 @@
 #include "raylib.h"
 #include "main.h"
 
-#ifdef DEBUG
-#include <time.h>
-#endif
-
 /*
-    TODO: convert input file into lowercase
     TODO: other waveforms
     TODO:   handle case when some ridiculous person is trying to generate more tokens
             or tones than what is allowed by this thing
@@ -221,12 +216,19 @@ static bool try_get_note (char *str, int *str_ptr, int *result_note) {
     int i = *str_ptr;
     int note = SILENCE;
     switch (str[i]) {
+    case 'c':
     case 'C': note = -9; break;
+    case 'd':
     case 'D': note = -7; break;
+    case 'e':
     case 'E': note = -5; break;
+    case 'f':
     case 'F': note = -4; break;
+    case 'g':
     case 'G': note = -2; break;
+    case 'a':
     case 'A': note = 0; break;
+    case 'b':
     case 'B': note = 2; break;
     default: return false;
     }
@@ -240,6 +242,7 @@ static bool try_get_note (char *str, int *str_ptr, int *result_note) {
             i++;
             note_is_valid_identifier = false;
             break;
+        case 'b':
         case 'B':
             note--;
             i++;
@@ -301,10 +304,6 @@ static int parse_optional_scale_offset(Optional_Scale_Offset_Data data) {
 }
 
 Compiler_Result *compile(State *state) {
-    #ifdef DEBUG
-        printf("Compiling:\n");
-    #endif
-
     int data_len = state->editor.line_count;
     char *data[state->editor.line_count];
     for (int i = 0; i < data_len; i++) {
@@ -333,10 +332,6 @@ Compiler_Result *compile(State *state) {
 
     // start lexer
     {
-        #ifdef DEBUG
-        clock_t lexer_time;
-        lexer_time = clock();
-        #endif
         int paren_nest_level = 0;
         int paren_open_addresses[COMPILER_MAX_PAREN_NESTING] = {0};
         for (int line_i = 0; line_i < data_len; line_i++) {
@@ -403,29 +398,29 @@ Compiler_Result *compile(State *state) {
                         ident[j] = line[*i + j];
                     }
                     ident[ident_length] = '\0';
-                    if (strcmp("START", ident) == 0) {
+                    if (strcmp("start", ident) == 0) {
                         token_add(result, TOKEN_START);
-                    } else if (strcmp("SEMI", ident) == 0) {
+                    } else if (strcmp("semi", ident) == 0) {
                         token_add(result, TOKEN_SEMI);
-                    } else if (strcmp("PLAY", ident) == 0) {
+                    } else if (strcmp("play", ident) == 0) {
                         token_add(result, TOKEN_PLAY);
-                    } else if (strcmp("WAIT", ident) == 0) {
+                    } else if (strcmp("wait", ident) == 0) {
                         token_add(result, TOKEN_WAIT);
-                    } else if (strcmp("BPM", ident) == 0) {
+                    } else if (strcmp("bpm", ident) == 0) {
                         token_add(result, TOKEN_BPM);
-                    } else if (strcmp("DURATION", ident) == 0) {
+                    } else if (strcmp("duration", ident) == 0) {
                         token_add(result, TOKEN_DURATION);
-                    } else if (strcmp("SCALE", ident) == 0) {
+                    } else if (strcmp("scale", ident) == 0) {
                         token_add(result, TOKEN_SCALE);
-                    } else if (strcmp("RISE", ident) == 0) {
+                    } else if (strcmp("rise", ident) == 0) {
                         token_add(result, TOKEN_RISE);
-                    } else if (strcmp("FALL", ident) == 0) {
+                    } else if (strcmp("fall", ident) == 0) {
                         token_add(result, TOKEN_FALL);
-                    } else if (strcmp("REPEAT", ident) == 0) {
+                    } else if (strcmp("repeat", ident) == 0) {
                         token_add(result, TOKEN_REPEAT);
-                    } else if (strcmp("ROUNDS", ident) == 0) {
+                    } else if (strcmp("rounds", ident) == 0) {
                         token_add(result, TOKEN_ROUNDS);
-                    } else if (strcmp("DEFINE", ident) == 0) {
+                    } else if (strcmp("define", ident) == 0) {
                         token_add(result, TOKEN_DEFINE);
                     } else {
                         Token *token = token_add(result, TOKEN_IDENTIFIER);
@@ -437,13 +432,6 @@ Compiler_Result *compile(State *state) {
                 }
             }
         }
-        #ifdef DEBUG
-            lexer_time = clock() - lexer_time;
-            printf(" * Lexer time: %f sec\n", ((float)lexer_time) / CLOCKS_PER_SEC);
-        #endif
-        #ifdef DEBUG_LIST_TOKENS
-            print_tokens(result->token_amount, result->tokens);
-        #endif
     }
     // end lexer
 
@@ -473,10 +461,6 @@ Compiler_Result *compile(State *state) {
 
     // start parser
     {
-        #ifdef DEBUG
-        clock_t parser_time;
-        parser_time = clock();
-        #endif
         Token* tokens = result->tokens;
         int nest_idx = -1;
         Repetition nest_repetitions[16];
@@ -691,14 +675,6 @@ Compiler_Result *compile(State *state) {
                 return parser_error(result, ERROR_SYNTAX_ERROR, i);
             }
         }
-        #ifdef DEBUG_LIST_FREQUENCIES
-            print_tones(result->tone_amount, result->tones);
-        #endif
-        #ifdef DEBUG
-            parser_time = clock() - parser_time;
-            double total_parser_time = ((double)parser_time) / CLOCKS_PER_SEC;
-            printf(" * Parser time: %f sec\n", total_parser_time);
-        #endif
     }
     // end parser
 
@@ -708,9 +684,6 @@ Compiler_Result *compile(State *state) {
         return result;
     }
 
-    #ifdef DEBUG
-        printf("Compiling Completed\n");
-    #endif
     return result;
 }
 
@@ -740,56 +713,3 @@ void compiler_result_free(State *state) {
     free(cr);
     state->compiler_result = NULL;
 }
-
-#ifdef DEBUG_LIST_TOKENS
-    static void print_tokens (int token_amount, Token *tokens) {
-        for (int i = 0; i < token_amount; i++) {
-            char *token_type;
-            switch (tokens[i].type) {
-            case BPM:           token_type = "BPM"; break;
-            case NUMBER:        token_type = "Number"; break;
-            case PLAY:          token_type = "Play"; break;
-            case WAIT:          token_type = "Wait"; break;
-            case NOTE:          token_type = "Note"; break;
-            case RISE:          token_type = "Rise"; break;
-            case FALL:          token_type = "Fall"; break;
-            case RISE_SEMI:     token_type = "Semi Rise"; break;
-            case FALL_SEMI:     token_type = "Semi Fall"; break;
-            case DURATION:      token_type = "Duration"; break;
-            case SCALE:         token_type = "Scale"; break;
-            case REPEAT:        token_type = "Repeat"; break;
-            case DEFINE:        token_type = "Define"; break;
-            case PAREN_OPEN:    token_type = "Paren Open"; break;
-            case PAREN_CLOSE:   token_type = "Paren Close"; break;
-            case SLASH:         token_type = "Slash"; break;
-            default:            token_type = "Unknown"; break;
-            }
-            printf("token[%04i]  %-16s", i, token_type);
-            switch (tokens[i].type) {
-            case NOTE:
-            case NUMBER:
-                printf("%d", tokens[i].value.number);
-                break;
-            case SCALE: {
-                    int location = tokens[i].value.number;
-                    printf("token[%04i]", location);
-                }
-                break;
-            case IDENTIFIER: {
-                    printf("%s", tokens[i].value.string);
-                }
-                break;
-            case PAREN_OPEN:
-            case PAREN_CLOSE: {
-                    int match_location = tokens[i].value.number;
-                    printf("token[%04i]", match_location);
-                }
-                break;
-            default:
-                printf("----");
-                break;
-            }
-            printf("\n");
-        }
-    }
-#endif
