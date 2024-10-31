@@ -10,25 +10,26 @@ define gmajchord ( scale ( g b d ) )
 define cmajchord ( scale ( c e g ) )
 define dimchord  ( scale ( f g# b d ) )
 
-duration 16
-
 define motif1 (
-    play play rise 2 play fall play fall play
+    play16 play16 rise 2
+    play16 fall play16 fall play16
 )
 
 define motif2 (
-    play play rise play fall play fall play rise
+    play16 play16 rise
+    play16 fall play16 fall play16 rise
 )
 
 define section1 (
     repeat 2 (
         aminor
-        a play wait wait motif1
+        a play16 wait8 motif1
         emajor
-        e5 play wait wait e motif1
+        e5 play16 wait8 e motif1
         aminor
-        a play wait wait motif1
-        e5 play repeat 3(wait) e play repeat 3(wait)
+        a play16 wait8 motif1
+        e5 play16 wait8dot
+        e play16 wait8dot
     )
 )
 
@@ -36,49 +37,44 @@ define section2 (
     dminor
     a5
     repeat 2 (
-        play wait wait motif2 fall 2
-        play wait wait fall 2 motif1 rise 3
+        play16 wait8 motif2 fall 2
+        play16 wait8 fall 2 motif1 rise 3
     )
-    play wait wait fall 4
+    play16 wait8 fall 4
 )
 
 define section3 (
     aminor
     b motif1 rise 3
-    play wait wait fall 4
+    play16 wait8 fall 4
     motif1 fall 2
-    play wait rise 5 play fall 6
-    play rise 6 rise
-    play fall
-    play fall 2
-    play fall
-    play repeat 3(wait)
+    play16 wait16 rise 5 play16 fall 6
+    play16 rise 6 rise
+    play16 fall
+    play16 fall 2
+    play16 fall
+    play16
+    wait8dot
 )
 
 define arpeg1 (
-    duration 32
-    play rise
-    play rise
-    duration 16
-    repeat 6 (play fall)
+    play32 rise
+    play32 rise
+    repeat 6 (play16 fall)
     rise 3
 )
 
 define arpeg2 (
-    duration 32
-    play rise
-    play rise
-    duration 16
-    repeat 6 (play rise)
+    play32 rise
+    play32 rise
+    repeat 6 (play16 rise)
     fall 6
 )
 
 define arpeg3 (
-    duration 32
-    play fall
-    play fall
-    duration 16
-    repeat 6 (play fall)
+    play32 fall
+    play32 fall
+    repeat 6 (play16 fall)
     rise 8
 )
 
@@ -90,7 +86,8 @@ define section4 (
         g5 arpeg1
         aminchord
         a5 arpeg1
-        e5 play repeat 3(wait) e play repeat 3(wait)
+        e5 play16 wait8dot
+        e play16 wait8dot
     )
     amajchord
     c#6 arpeg1
@@ -104,29 +101,25 @@ define section4 (
     f6 arpeg3
     aminchord
     e6 arpeg3
-    duration 32
-    d play
-    f play
-    duration 16
-    b play
-    d5 play
-    f5 play
-    e play
-    e5 play
-    g# play
-    a play repeat 3(wait)
+
+    d play32 f play32
+    b play16
+    d5 play16
+    f5 play16
+    e play16
+    e5 play16
+    g# play16
+    a play16
+    wait8dot
 )
 
 define thr (
-    duration 16
     repeat 2 (
-        play semi fall
-        play rise
+        play16 semi fall
+        play16 rise
     )
-    duration 32
-    semi rise play
-    fall play
-    duration 16
+    semi rise play32
+    fall play32
 )
 
 define section5 (
@@ -134,17 +127,17 @@ define section5 (
     aminor
     a
     thr
-    repeat 3 (rise play)
+    repeat 3 (rise play16)
     rise
     thr
-    repeat 3 (fall play)
+    repeat 3 (fall play16)
     fall
     thr
-    repeat 3 (rise play)
+    repeat 3 (rise play16)
     rise
-    thr wait
+    thr wait16
     fall 7
-    play wait
+    play16 wait16
     )
 )
 
@@ -153,14 +146,15 @@ define section6 (
     dminor
     repeat 2 (
     thr
-    repeat 3 (fall play)
+    repeat 3 (fall play16)
     fall
     thr
-    rise play rise play fall 2 play
+    rise play16 rise play16 fall 2 play16
     rise 3
     )
 )
-bpm 150
+
+bpm 170
 section1
 section2
 section3

@@ -1,36 +1,20 @@
-bpm 140
+bpm 180
 
 define motif_1 (
-    duration 8
-    A3 play D play F# play
-    wait
-    B3 play E play G play
-    wait
+    A3 play8 D play8 F# play8 wait8
+    B3 play8 E play8 G play8 wait8
 )
 
 define motif_2 (
-    duration 8
-    A3 play Db play E play
-    duration 16
-    A play wait B play wait
-    duration 6
-    A play
-    duration 16
-    G play F# play
-    wait
+    A3 play8 Db play8 E play8
+    A play16 wait16 B play16 wait16
+    A play8dot G play16 F# play16 wait16
 )
 
 define motif_3 (
-    duration 8
-    A3 play C# play E play
-    duration 16
-    A play wait
-    duration 8
-    play
-    duration 4
-    D play
-    duration 8
-    wait
+    A3 play8 C# play8 E play8
+    A play16 wait16 play8
+    D play wait8
 )
 
 define section_1 (
@@ -41,26 +25,12 @@ define section_1 (
 )
 
 define section_2 (
-    duration 8
-    Gb play
-    duration 16
-    D# play wait
-    duration 8
-    B3 play
-    duration 16
-    B play wait
-    duration 8
-    play G play
-    duration 16 wait
-    duration 16
-    F# play E play wait
-    duration 8
-    D play C# play A3 play
-    duration 16
-    C# play wait
-    duration 8 E play
-    duration 16
-    A play B play A play G play F# play wait
+    start
+    Gb play8 D# play16 wait16 B3 play8
+    B play16 wait16 play8
+    G play8dot F# play16 E play16 wait16
+    D play8 C# play8 A3 play8 C# play16 wait16 E play8
+    A play16 B play16 A play16 G play16 F# play16 wait16
     motif_1
     motif_3
 )
@@ -69,3 +39,4 @@ repeat 2 (
     repeat 2 (section_1)
     repeat 2 (section_2)
 )
+

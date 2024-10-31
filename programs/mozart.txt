@@ -1,55 +1,52 @@
 define amin ( scale (a b c d e f g) )
 define amaj ( scale (a b c# d e f# g#) )
-duration 16
 
 define m1 (
     amin
     b
     repeat 2 (
-        play fall
-        play semi fall
-        play rise
-        play rise 2
-        play
-        repeat 3(wait)
+        play16 fall
+        play16 semi fall
+        play16 rise
+        play16 rise 2
+        play16
+        wait8dot
         rise
     )
 
-    play fall
-    play semi fall
-    play rise
-    play rise 4
+    play16 fall
+    play16 semi fall
+    play16 rise
+    play16 rise 4
 
     repeat 2 (
-        play fall
-        play semi fall
-        play rise
-        play rise
+        play16 fall
+        play16 semi fall
+        play16 rise
+        play16 rise
     )
     rise
-    play repeat 3(wait)
+    play16 wait8dot
 )
 
 define m1a (
     amin
     a5
-    play wait rise 2
-    play fall
+    play16 wait16 rise 2
+    play16 fall
 
     define m1a1 (
-        duration 32
-        fall 2 play rise play rise
-        duration 16
-        play wait fall
-        play wait fall
-        play wait
+        fall 2 play32 rise play32 rise
+        play16 wait16 fall
+        play16 wait16 fall
+        play16 wait16
     )
 
-    m1a1 rise play rise
-    m1a1 rise play rise
+    m1a1 rise play16 rise
+    m1a1 rise play16 rise
     m1a1 semi fall
-    play wait semi fall 2
-    play repeat 3 (wait)
+    play16 wait16 semi fall 2
+    play16 wait8dot
 )
 
 define m2 (
@@ -57,13 +54,11 @@ define m2 (
     e5
     repeat 2 (
         repeat 2 (
-            repeat 2 (play wait rise)
-            repeat 2 (play wait)
+            repeat 2 (play16 wait16 rise)
+            repeat 2 (play16 wait16)
             rise
-            repeat 4 (play fall)
-            duration 4
+            repeat 4 (play16 fall)
             play
-            duration 16
             rise
         )
         fall 2
@@ -73,60 +68,46 @@ define m2 (
 define m1b (
     amin
     a5
-    repeat 2 (play wait rise)
-    play wait fall
-    duration 32
-    play rise
+    repeat 2 (play16 wait16 rise)
+    play16 wait16 fall
+    play32 rise
+    play32 fall
+    play32 fall
+    play16 wait16 semi fall
+    play16 wait16 rise
+    play16 wait16 fall 3
+    play16 wait16 rise
+    play16 wait16 fall 2
+    play16 wait16 fall
     play fall
-    play fall
-    duration 16
-    play wait semi fall
-    play wait rise
-    play wait fall 3
-    play wait rise
-    play wait fall 2
-    play wait fall
-    duration 4
-    play fall
-    duration 32
-    repeat 4 (play rise play fall)
+    repeat 4 (play32 rise play32 fall)
     fall
-    duration 4
     play
-    duration 16
 )
 
 define m3 (
     amaj
     repeat 2 (
         a5
-        repeat 2 (play wait rise)
-        duration 4
+        repeat 2 (play16 wait16 rise)
         play fall 2
-        duration 16
-        repeat 2 (play wait rise)
-        play wait fall
-        duration 32
-        play rise
-        play fall
-        play fall
-        duration 16
-        repeat 2 (play wait fall)
+        repeat 2 (play16 wait16 rise)
+        play16 wait16 fall
+        play32 rise
+        play32 fall
+        play32 fall
+        repeat 2 (play16 wait16 fall)
         rounds 1 (
-            duration 8
-            play rise
-            duration 16
-            repeat 2 (play wait rise)
-            repeat 2 (play wait fall 2)
-            play wait
+            play8 rise
+            repeat 2 (play16 wait16 rise)
+            repeat 2 (play16 wait16 fall 2)
+            play16 wait16
         )
         rounds 2 (
-            play wait rise 3
-            repeat 2 (play wait fall 2)
-            play wait rise 3
-            duration 4
+            play16 wait16 rise 3
+            repeat 2 (play16 wait16 fall 2)
+            play16 wait16 rise 3
             play
-            duration 16
         )
     )
 )
@@ -137,65 +118,63 @@ define m4 (
 
     repeat 2 (
         repeat 2 (
-            play rise
-            repeat 3 (play fall)
+            play16 rise
+            repeat 3 (play16 fall)
         )
 
-        play rise 2
-        play fall
-        play fall
-        play
+        play16 rise 2
+        play16 fall
+        play16 fall
+        play16
         rounds 1 (
             semi fall
         
-            play rise
-            play rise
-            play semi fall 3
-            play fall 3
+            play16 rise
+            play16 rise
+            play16 semi fall 3
+            play16 fall 3
         
-            play semi rise 2
-            play semi rise 2
-            play semi fall 4
-            play rise 3
+            play16 semi rise 2
+            play16 semi rise 2
+            play16 semi fall 4
+            play16 rise 3
         
             repeat 2 (
-                play semi fall
-                play rise
-                play rise
-                play rise
+                play16 semi fall
+                play16 rise
+                play16 rise
+                play16 rise
             )
         
             repeat 2 (
-                play semi fall
-                play rise
+                play16 semi fall
+                play16 rise
             )
         )
         rounds 2 (
             fall
         
-            play rise
-            play rise
-            play fall 2
-            play fall 2
+            play16 rise
+            play16 rise
+            play16 fall 2
+            play16 fall 2
         
-            play semi rise 2
-            play semi rise 1
-            play semi fall 3
-            play semi rise 2
+            play16 semi rise 2
+            play16 semi rise 1
+            play16 semi fall 3
+            play16 semi rise 2
         
-            play rise
-            play rise
-            play semi fall 3
-            play semi fall 3
+            play16 rise
+            play16 rise
+            play16 semi fall 3
+            play16 semi fall 3
         
-            play rise
-            play semi rise 2
-            play semi fall 3
-            play rise
-        
-            duration 4
+            play16 rise
+            play16 semi rise 2
+            play16 semi fall 3
+            play16 rise
+
             play
-            duration 16
         )
     )
 )
@@ -204,30 +183,26 @@ define m5 (
     amaj
     repeat 2 (
         e5
-        repeat 4 (play fall)
-        repeat 7 (play rise)
-        play
-        repeat 7 (play fall)
-        play
+        repeat 4 (play16 fall)
+        repeat 7 (play16 rise)
+        play16
+        repeat 7 (play16 fall)
+        play16
         rounds 1 (
-            repeat 7 (play rise)
-            play semi rise
-            duration 8
-            play rise
-            play
-            duration 16
+            repeat 7 (play16 rise)
+            play16 semi rise
+            play8 rise
+            play16 wait16
         )
         rounds 2 (
             rise 2
             repeat 2 (
-                play rise 2
-                play fall 4
-                play rise 2
-                play fall
+                play16 rise 2
+                play16 fall 4
+                play16 rise 2
+                play16 fall
             )
-            duration 4
             play
-            duration 16
         )
     )
 )

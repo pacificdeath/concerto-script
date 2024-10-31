@@ -30,13 +30,13 @@
 #define EDITOR_FINDER_BUFFER_MAX 32
 #define EDITOR_GO_TO_LINE_BUFFER_MAX 5
 #define EDITOR_UNDO_BUFFER_MAX 64
-#define EDITOR_BG_COLOR             (Color) { 0x00, 0x00, 0x00, 0xFF }
-#define EDITOR_NORMAL_COLOR         (Color) { 0xFF, 0xFF, 0xFF, 0xFF }
-#define EDITOR_PLAY_COLOR           (Color) { 0x00, 0xff, 0x88, 0xff }
-#define EDITOR_WAIT_COLOR           EDITOR_PLAY_COLOR
-#define EDITOR_KEYWORD_COLOR        (Color) { 0xbb, 0x88, 0xff, 0xff }
-#define EDITOR_NOTE_COLOR           (Color) { 0xff, 0xbb, 0x00, 0xff }
-#define EDITOR_PAREN_COLOR          (Color) { 0x66, 0x44, 0x88, 0xff }
+#define EDITOR_BG_COLOR             (Color) { 0X00, 0X00, 0X00, 0XFF }
+#define EDITOR_NORMAL_COLOR         (Color) { 0XFF, 0XFF, 0XFF, 0XFF }
+#define EDITOR_PLAY_COLOR           (Color) { 0X00, 0XFF, 0X88, 0XFF }
+#define EDITOR_WAIT_COLOR           (Color) { 0XFF, 0X88, 0X88, 0XFF }
+#define EDITOR_KEYWORD_COLOR        (Color) { 0XBB, 0X88, 0XFF, 0XFF }
+#define EDITOR_NOTE_COLOR           (Color) { 0XFF, 0XBB, 0X00, 0XFF }
+#define EDITOR_PAREN_COLOR          (Color) { 0X66, 0X44, 0X88, 0XFF }
 #define EDITOR_SPACE_COLOR          (Color) { 0X44, 0X44, 0X44, 0XFF }
 #define EDITOR_COMMENT_COLOR        EDITOR_SPACE_COLOR
 #define EDITOR_LINENUMBER_COLOR     (Color) { 0X88, 0X88, 0X88, 0XFF }
@@ -60,10 +60,8 @@ typedef struct Tone {
     uint16_t line_idx;
     uint16_t char_idx;
     uint16_t char_count;
-    int8_t start_note;
-    int8_t end_note;
-    float start_frequency;
-    float end_frequency;
+    int8_t note;
+    float frequency;
     float duration;
     uint8_t octave;
 } Tone;
@@ -169,7 +167,6 @@ typedef enum Token_Type {
     TOKEN_BPM,
     TOKEN_PLAY,
     TOKEN_WAIT,
-    TOKEN_DURATION,
     TOKEN_SCALE,
     TOKEN_REPEAT,
     TOKEN_ROUNDS,
@@ -177,7 +174,11 @@ typedef enum Token_Type {
 } Token_Type;
 
 typedef union Token_Value {
-    int number;
+    int int_number;
+    struct {
+        float duration;
+        int char_count;
+    } play_or_wait_data;
     char *string;
 } Token_Value;
 
@@ -245,12 +246,11 @@ typedef struct Optional_Scale_Offset_Data {
 } Optional_Scale_Offset_Data;
 
 typedef struct Tone_Add_Data {
-    uint32_t idx;
     Compiler_Result *result;
     Token *token;
-    int start_note;
-    int end_note;
-    float duration;
+    uint32_t idx;
+    int note;
+    int bpm;
 } Tone_Add_Data;
 
 typedef struct Synthesizer_Sound {

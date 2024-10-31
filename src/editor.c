@@ -1209,6 +1209,91 @@ static void render_selection(Editor_Selection_Render_Data data) {
     );
 }
 
+static Token_Type try_get_play_or_wait_token_type_at_coord(State *state, Editor_Coord coord) {
+    Editor *e = &state->editor;
+    char *line = e->lines[coord.y];
+    int char_idx = coord.x;
+
+    Token_Type token_type = TOKEN_NONE;
+
+    if (
+        line[char_idx] == 'p' &&
+        line[char_idx + 1] == 'l' &&
+        line[char_idx + 2] == 'a' &&
+        line[char_idx + 3] == 'y'
+    ) {
+        token_type = TOKEN_PLAY;
+    }
+
+    if (token_type == TOKEN_NONE &&
+        line[char_idx] == 'w' &&
+        line[char_idx + 1] == 'a' &&
+        line[char_idx + 2] == 'i' &&
+        line[char_idx + 3] == 't'
+    ) {
+        token_type = TOKEN_WAIT;
+    }
+
+    if (token_type == TOKEN_NONE) {
+        return TOKEN_NONE;
+    }
+
+    char_idx += 4;
+
+    switch (line[char_idx]) {
+    default: break;
+    case '1': {
+        if (line[char_idx + 1] == '6') char_idx += 2; else char_idx++; break;
+    } break;
+    case '2':
+    case '4':
+    case '8': char_idx++; break;
+    case '3': if (line[char_idx + 1] == '2') char_idx += 2; else return TOKEN_NONE; break;
+    case '6': if (line[char_idx + 1] == '4') char_idx += 2; else return TOKEN_NONE; break;
+    }
+
+    switch (line[char_idx]) {
+    default: {
+        if (is_valid_in_identifier(line[char_idx])) {
+            return false;
+        }
+    } break;
+    case 'd': {
+        if (
+            line[char_idx + 1] != 'o' ||
+            line[char_idx + 2] != 't'
+        ) {
+            return false;
+        }
+        char_idx += 3;
+        if (is_numeric(line[char_idx])) {
+            char_idx++;
+        } else if (is_valid_in_identifier(line[char_idx])) {
+            return false;
+        }
+    } break;
+    case 't': {
+        if (
+            line[char_idx + 1] != 'r' ||
+            line[char_idx + 2] != 'i' ||
+            line[char_idx + 3] != 'p' ||
+            line[char_idx + 4] != 'l' ||
+            line[char_idx + 5] != 'e' ||
+            line[char_idx + 6] != 't'
+        ) {
+            return false;
+        }
+        char_idx += 7;
+    } break;
+    }
+
+    if (is_valid_in_identifier(line[char_idx])) {
+        return TOKEN_NONE;
+    }
+
+    return token_type;
+}
+
 static bool is_note_at_coord(State *state, Editor_Coord coord) {
     Editor *e = &state->editor;
     char c = e->lines[coord.y][coord.x];
@@ -1297,9 +1382,15 @@ static void editor_render_base(State *state, float line_height, float char_width
                     found_word = true;
 
                     Editor_Coord coord = { .y = line_idx, .x = j };
-                    bool is_note = is_note_at_coord(state, coord);
 
-                    if (is_note) {
+                    Token_Type play_or_wait = try_get_play_or_wait_token_type_at_coord(state, coord);
+                    if (play_or_wait != TOKEN_NONE) {
+                        if (play_or_wait == TOKEN_PLAY) {
+                            color = EDITOR_PLAY_COLOR;
+                        } else {
+                            color = EDITOR_WAIT_COLOR;
+                        }
+                    } else if (is_note_at_coord(state, coord)) {
                         color = EDITOR_NOTE_COLOR;
                     } else {
                         int char_offset;
@@ -1324,7 +1415,6 @@ static void editor_render_base(State *state, float line_height, float char_width
                             strcmp(current_word, "rounds") == 0 ||
                             strcmp(current_word, "semi") == 0 ||
                             strcmp(current_word, "bpm") == 0 ||
-                            strcmp(current_word, "duration") == 0 ||
                             strcmp(current_word, "scale") == 0 ||
                             strcmp(current_word, "rise") == 0 ||
                             strcmp(current_word, "fall") == 0) {

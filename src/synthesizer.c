@@ -73,7 +73,7 @@ void synthesizer_run(void *data) {
             printf("malloc failed for audio_data");
             return;
         }
-        if (synthesizer->sounds[i].tone.start_note == SILENCE) {
+        if (synthesizer->sounds[i].tone.note == SILENCE) {
             for (int frame = 0; frame < frame_count; frame += 1) {
                 for (int k = 0; k < channels; k++) {
                     audio_data[frame * channels + k] = 0;
@@ -82,9 +82,9 @@ void synthesizer_run(void *data) {
         } else {
             for (int frame = 0; frame < frame_count; frame += 1) {
                 float t = (float)frame / (float)(frame_count - 1); // Normalized time (0.0 to 1.0)
-                float current_frequency = (1.0f - t) * synthesizer->sounds[i].tone.start_frequency + t * synthesizer->sounds[i].tone.end_frequency;
+
                 // float sample = sinf(2.0f * PI * current_frequency * frame / sample_rate);
-                float x = current_frequency * frame / sample_rate;
+                float x = synthesizer->sounds[i].tone.frequency * frame / sample_rate;
                 float sample = 4.0f * fabs(x - floor(x + 0.75f) + 0.25f) - 1.0f;
 
                 float envelope; // Default to full volume
