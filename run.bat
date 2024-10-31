@@ -6,8 +6,6 @@ set PROGRAM=""
 set DEBUG=""
 set GDB=0
 set TEST_THREAD=""
-set LIST_TOKENS=""
-set LIST_FREQUENCIES=""
 
 for %%x in (%*) do (
     if "%%x"=="help" (
@@ -20,12 +18,6 @@ for %%x in (%*) do (
     ) else if "%%x"=="test-thread" (
         set DEBUG=%D%
         set TEST_THREAD="-DTEST_THREAD"
-    ) else if "%%x"=="list-token" (
-        set DEBUG=%D%
-        set LIST_TOKENS="-DLIST_TOKENS"
-    ) else if "%%x"=="list-freq" (
-        set DEBUG=%D%
-        set LIST_FREQUENCIES="-DLIST_FREQUENCIES"
     ) else (
         set PROGRAM="%%x"
     )
@@ -33,8 +25,6 @@ for %%x in (%*) do (
 
 set DEBUG=%DEBUG:"=%
 set TEST_THREAD=%TEST_THREAD:"=%
-set LIST_TOKENS=%LIST_TOKENS:"=%
-set LIST_FREQUENCIES=%LIST_FREQUENCIES:"=%
 
 gcc -c ^
     !DEBUG! ^
@@ -49,8 +39,6 @@ if not %errorlevel% equ 0 (
 gcc -c ^
     !DEBUG! ^
     !TEST_THREAD! ^
-    !LIST_TOKENS! ^
-    !LIST_FREQUENCIES! ^
     ./src/main.c ^
     -o main.o ^
     -I./raylib-5.0_win64_mingw-w64/include/
@@ -94,8 +82,6 @@ goto :end
     echo    d              enable debug
     echo    g              run gdb after compiliation
     echo    test-thread    test multithreading
-    echo    list-tok       print internal compiler tokens to console
-    echo    list-freq      print internal compiler frequencies to console
 goto :end
 
 :end
