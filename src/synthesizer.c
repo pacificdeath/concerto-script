@@ -86,7 +86,18 @@ void synthesizer_run(void *data) {
                 // float sample = sinf(2.0f * PI * current_frequency * frame / sample_rate);
                 float x = current_frequency * frame / sample_rate;
                 float sample = 4.0f * fabs(x - floor(x + 0.75f) + 0.25f) - 1.0f;
-                float envelope = 0.5f * (1.0f - cosf(2.0f * PI * frame / (frame_count - 1)));
+
+                float envelope; // Default to full volume
+                if (frame < SYNTHESIZER_FADE_FRAMES) {
+                    // Fade-in
+                    envelope = (float)frame / (float)SYNTHESIZER_FADE_FRAMES;
+                } else if (frame >= frame_count - SYNTHESIZER_FADE_FRAMES) {
+                    // Fade-out
+                    envelope = (float)(frame_count - frame) / (float)SYNTHESIZER_FADE_FRAMES;
+                } else {
+                    envelope = 1.0f;
+                }
+
                 sample *= envelope;
                 for (int k = 0; k < channels; k++) {
                     audio_data[frame * channels + k] = (int16_t)(sample * 32767); // 32767 is the max value for 16-bit audio

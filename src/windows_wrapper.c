@@ -5,6 +5,18 @@
 
 #include "windows_wrapper.h"
 
+Keyboard_Layout get_keyboard_layout() {
+    HKL raw_layout = GetKeyboardLayout(0);
+    Keyboard_Layout layout_id = (DWORD_PTR)raw_layout & 0xFFFF; // Get the low word
+    switch (layout_id) {
+    case KEYBOARD_LAYOUT_DEFAULT:
+    case KEYBOARD_LAYOUT_SWEDISH:
+        return layout_id;
+    default:
+        return KEYBOARD_LAYOUT_DEFAULT;
+    }
+}
+
 void sleep(u32 milliseconds) {
     Sleep(milliseconds);
 }
@@ -29,9 +41,13 @@ int list_files(char *dir, char *buffer, int max) {
             find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             continue;
         }
+
+        if (amount > 0) {
+            strcat(buffer, "\n");
+        }
         strcat(buffer, find_data.cFileName);
-        strcat(buffer, "\n");
         amount++;
+
         if (amount == max) {
             break;
         }

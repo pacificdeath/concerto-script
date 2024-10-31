@@ -1,0 +1,78 @@
+bpm 150
+
+define motif_1 (
+    duration 8
+    c5 play
+    duration 16
+    b play wait
+    duration 8
+    play
+    duration 16
+    g# play wait
+    duration 8
+    play
+    duration 16
+    g play wait
+    duration 4
+    play
+)
+
+define motif_2 (
+    duration 16
+    repeat 2 (
+        play rise play fall
+    )
+    play wait
+    rise
+    play wait
+)
+
+define gobi_1 (
+    motif_1
+    scale (g g#)
+    g motif_2
+    duration 3
+    g play
+    duration 8
+    g# play
+)
+
+define gobi_2 (
+    motif_1
+    scale (f g)
+    f motif_2
+    scale (g b)
+    g motif_2
+)
+
+define gobi_3 (
+    motif_1
+    duration 4
+    f play
+    c# play
+    duration 2
+    c play
+)
+
+define gobi_4 (
+    duration 16
+    repeat 3 (
+        c play wait
+        c5 play g play
+        c play wait
+        c5 play wait
+    )
+    c play wait
+    g play wait
+    c play wait
+    c5 play wait
+)
+
+repeat 2 (
+    gobi_1
+    gobi_2
+    gobi_1
+    gobi_3
+    gobi_4
+)
+

@@ -120,8 +120,7 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         for (i = 1; char_idx + i <= slice_end && is_valid_in_identifier(slice[char_idx + i - slice_start]); i += 1) {
             str_buffer[i] = '^';
         }
-        str_buffer[i] = '\n';
-        str_buffer[i + 1] = '\0';
+        str_buffer[i] = '\0';
     }
     strcat(result->error_message, str_buffer);
     return;

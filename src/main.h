@@ -43,13 +43,17 @@
 #define EDITOR_CURSOR_COLOR         (Color) { 0X00, 0XFF, 0XFF, 0XFF }
 #define EDITOR_SELECTION_COLOR      (Color) { 0X00, 0X88, 0XFF, 0X88 }
 
-#define CONSOLE_LINE_COUNT 32
+#define CONSOLE_LINE_CAPACITY 32
 #define CONSOLE_LINE_MAX_LENGTH 256
 #define CONSOLE_BG_COLOR (Color) {0, 0, 0, 255}
-#define CONSOLE_TEXT_COLOR (Color) {0, 255, 255, 255}
+#define CONSOLE_FG_DEFAULT_COLOR (Color) {0, 255, 0, 255}
+#define CONSOLE_FG_ERROR_COLOR (Color) {255, 0, 0, 255}
+#define CONSOLE_HIGHLIGHT_COLOR (Color) {0, 255, 255, 128}
 
 #define COMPILER_MAX_PAREN_NESTING 32
 #define COMPILER_VARIABLE_MAX_COUNT 255
+
+#define SYNTHESIZER_FADE_FRAMES 1000
 
 typedef struct Tone {
     uint32_t idx;
@@ -267,6 +271,8 @@ typedef struct Synthesizer {
 typedef struct State {
     enum {
         STATE_EDITOR,
+        STATE_EDITOR_SAVE_FILE,
+        STATE_EDITOR_SAVE_FILE_ERROR,
         STATE_EDITOR_FILE_EXPLORER,
         STATE_EDITOR_FIND_TEXT,
         STATE_EDITOR_GO_TO_LINE,
@@ -277,6 +283,8 @@ typedef struct State {
         STATE_INTERRUPT,
     } state;
 
+    Keyboard_Layout keyboard_layout;
+
     int window_width;
     int window_height;
 
@@ -286,13 +294,16 @@ typedef struct State {
 
     Editor editor;
 
-    char console_text[CONSOLE_LINE_COUNT][CONSOLE_LINE_MAX_LENGTH];
+    char console_text[CONSOLE_LINE_CAPACITY][CONSOLE_LINE_MAX_LENGTH];
+    int console_line_count;
+    int console_highlight_idx;
 
     Compiler_Result *compiler_result;
     Synthesizer_Sound *current_sound;
 } State;
 
 void console_set_text(State *state, char *text);
+void console_get_highlighted_text(State *state, char *buffer);
 
 int editor_line_height(State *state) {
     return state->window_height / EDITOR_MAX_VISUAL_LINES;

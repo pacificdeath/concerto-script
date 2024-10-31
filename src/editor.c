@@ -9,21 +9,70 @@ static bool is_alphabetic(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
+static bool is_numeric(char c) {
+    return (c >= '0' && c <= '9');
+}
+
 static bool is_uppercase(char c) {
     return (c >= 'A' && c <= 'Z');
 }
 
-static char uppercase_on_condition(char character, bool condition) {
-    if (is_uppercase(character)) {
-        if (condition) {
-            return character;
+char keyboard_key_to_char(State *state, KeyboardKey key, bool shift) {
+    if (is_alphabetic(key)) {
+        if (is_uppercase(key)) {
+            if (shift) {
+                return key;
+            }
+            return key + 32;
         }
-        return character + 32;
+        if (shift) {
+            return key - 32;
+        }
+        return key;
     }
-    if (condition) {
-        return character - 32;
+    switch (state->keyboard_layout) {
+    case KEYBOARD_LAYOUT_DEFAULT: {
+        if (is_numeric(key)) {
+            if (shift) {
+                switch (key) {
+                default: return key;
+                case '1': return '!';
+                case '2': return '@';
+                case '3': return '#';
+                case '4': return '$';
+                case '5': return '%';
+                case '6': return '^';
+                case '7': return '&';
+                case '8': return '*';
+                case '9': return '(';
+                case '0': return ')';
+                }
+            }
+            return key;
+        }
+    } break;
+    case KEYBOARD_LAYOUT_SWEDISH: {
+        if (is_numeric(key)) {
+            switch (key) {
+            default: return key;
+            case '1': return '!';
+            case '2': return '\"';
+            case '3': return '#';
+            case '4': return '$';
+            case '5': return '%';
+            case '6': return '&';
+            case '7': return '/';
+            case '8': return '(';
+            case '9': return ')';
+            case '0': return '=';
+            }
+        }
+    } break;
     }
-    return character;
+    switch (key) {
+    default: return '_';
+    case ' ': return key;
+    }
 }
 
 static void add_editor_line(State *state, Editor_Coord coord) {
@@ -62,6 +111,9 @@ static void delete_editor_line(State *state, int line_idx) {
 
 static void add_editor_char(State *state, char character, Editor_Coord coord) {
     Editor *e = &state->editor;
+    if (TextLength(e->lines[coord.y]) > EDITOR_LINE_MAX_LENGTH - 2) {
+        return;
+    }
     char next = e->lines[coord.y][coord.x];
     e->lines[coord.y][coord.x] = character;
     coord.x++;
@@ -206,9 +258,6 @@ static void set_cursor_y(State *state, int line) {
     e->selection_y = line;
     e->selection_x = e->cursor.x;
     e->cursor_anim_time = 0.0;
-    if (state->state == STATE_EDITOR) {
-        snap_visual_vertical_offset_to_cursor(state);
-    }
 }
 
 static void register_undo(State *state, Editor_Action_Type type, Editor_Coord coord, void *data) {
@@ -379,7 +428,7 @@ static void go_to_definition(State *state) {
     int ident_idx = 0;
     bool ident_found = false;
 
-    char *define = "DEFINE";
+    char *define = "define";
     int define_len = 6;
     int define_idx = 0;
     bool define_found = false;
@@ -553,6 +602,7 @@ static void trigger_key(State *state, int key, bool ctrl, bool shift) {
             int len = strlen(e->lines[e->cursor.y]);
             int x = e->cursor.x >= len ? len : e->cursor.x;
             set_target_x(state, x);
+            snap_visual_vertical_offset_to_cursor(state);
         }
         break;
     case KEY_UP:
@@ -565,6 +615,7 @@ static void trigger_key(State *state, int key, bool ctrl, bool shift) {
             int len = strlen(e->lines[e->cursor.y]);
             int x = e->cursor.x >= len ? len : e->cursor.x;
             set_target_x(state, x);
+            snap_visual_vertical_offset_to_cursor(state);
         }
         break;
     case KEY_BACKSPACE:
@@ -603,7 +654,7 @@ void editor_free(State *state) {
 
 void editor_load_file(State *state, char *filename) {
     FILE *file;
-    char line[4096];
+    char line[EDITOR_LINE_MAX_LENGTH];
     file = fopen(filename, "r");
     if (file == NULL) {
         return;
@@ -614,20 +665,25 @@ void editor_load_file(State *state, char *filename) {
         strcpy(state->editor.lines[i], line);
         int len = strlen(state->editor.lines[i]);
         state->editor.lines[i][len - 1] = '\0';
-        state->editor.line_count++;
     }
-    if (i > 0) {
+    if (i == 0) {
+        state->editor.lines[i][0] = '\0';
+        state->editor.line_count = 1;
+    } else {
         state->editor.line_count = i;
     }
     strcpy(state->editor.current_file, filename);
     fclose(file);
+    set_cursor_y(state, 0);
+    set_cursor_x(state, 0);
+    snap_visual_vertical_offset_to_cursor(state);
 }
 
-void editor_save_file(State *state, char *filename) {
+bool editor_save_file(State *state) {
     FILE *file;
-    file = fopen(filename, "w");
+    file = fopen(state->editor.current_file, "w");
     if (file == NULL) {
-        return;
+        return false;
     }
     for (int i = 0; i < state->editor.line_count; i++) {
         int len = strlen(state->editor.lines[i]);
@@ -637,6 +693,7 @@ void editor_save_file(State *state, char *filename) {
         fwrite("\n", sizeof(char), 1, file);
     }
     fclose(file);
+    return true;
 }
 
 static void editor_set_cursor_x_first_non_whitespace(State *state) {
@@ -710,6 +767,7 @@ void update_filename_buffer(State *state) {
     char console_text[EDITOR_FILENAMES_MAX_AMOUNT * EDITOR_FILENAME_MAX_LENGTH];
     sprintf(console_text, "%s\n%s", e->file_search_buffer, e->filename_buffer);
     console_set_text(state, console_text);
+    state->console_highlight_idx = 1;
 }
 
 void finder_update_matches(State *state) {
@@ -758,7 +816,21 @@ void editor_input(State *state) {
     case STATE_EDITOR: {
         if (ctrl && IsKeyPressed(KEY_O)) {
             update_filename_buffer(state);
+            state->console_highlight_idx = 1;
             state->state = STATE_EDITOR_FILE_EXPLORER;
+            return;
+        }
+        if (ctrl && IsKeyPressed(KEY_S)) {
+            char buffer[FILENAME_MAX];
+            if (editor_save_file(state)) {
+                sprintf(buffer, "\"%s\" saved", e->current_file);
+                console_set_text(state, buffer);
+                state->state = STATE_EDITOR_SAVE_FILE;
+            } else {
+                sprintf(buffer, "Saving failed for file:\n\"%s\"", e->current_file);
+                console_set_text(state, buffer);
+                state->state = STATE_EDITOR_SAVE_FILE_ERROR;
+            }
             return;
         }
         if (ctrl && IsKeyPressed(KEY_P)) {
@@ -837,49 +909,12 @@ void editor_input(State *state) {
         }
         for (KeyboardKey key = 32; key < 127; key++) {
             if (IsKeyPressed(key) && e->cursor.x < EDITOR_LINE_MAX_LENGTH - 2 && e->cursor.x < EDITOR_LINE_MAX_LENGTH - 1) {
-                if (is_alphabetic(key)) {
-                    char c = uppercase_on_condition(key, shift);
-                    cursor_add_char(state, c);
-                    return;
-                } else if (shift) {
-                    switch (key) {
-                    default: return;
-                    case '1': {
-                        cursor_add_char(state, '!');
-                    } return;
-                    case '3': {
-                        cursor_add_char(state, '#');
-                    } return;
-                    case '9': {
-                        cursor_add_char(state, '(');
-                    } return;
-                    case '0': {
-                        cursor_add_char(state, ')');
-                    } return;
-                    }
-                } else {
-                    cursor_add_char(state, key);
-                    return;
-                }
+                char c = keyboard_key_to_char(state, key, shift);
+                cursor_add_char(state, c);
+                return;
             } else {
                 // TODO: this is currently a silent failure and it should not at all be that
             }
-        }
-        if (IsKeyPressed(KEY_KP_ADD)) {
-            cursor_add_char(state, '+');
-            return;
-        }
-        if (IsKeyPressed(KEY_KP_SUBTRACT)) {
-            cursor_add_char(state, '-');
-            return;
-        }
-        if (IsKeyPressed(KEY_KP_MULTIPLY)) {
-            cursor_add_char(state, '*');
-            return;
-        }
-        if (IsKeyPressed(KEY_KP_DIVIDE)) {
-            cursor_add_char(state, '/');
-            return;
         }
         if (IsKeyPressed(KEY_TAB)) {
             bool selection_active = cursor_selection_active(state);
@@ -974,16 +1009,27 @@ void editor_input(State *state) {
             }
         }
     } return;
+    case STATE_EDITOR_SAVE_FILE:
+    case STATE_EDITOR_SAVE_FILE_ERROR: {
+        if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE)) {
+            state->state = STATE_EDITOR;
+        }
+    } break;
     case STATE_EDITOR_FILE_EXPLORER: {
         if (IsKeyPressed(KEY_ESCAPE)) {
             e->file_search_buffer[0] = '\0';
             e->file_search_buffer_length = 0;
             e->file_cursor = 0;
+            state->console_highlight_idx = -1;
             state->state = STATE_EDITOR;
         } else if (IsKeyPressed(KEY_DOWN)) {
-
+            if (state->console_highlight_idx < (state->console_line_count - 1)) {
+                state->console_highlight_idx++;
+            }
         } else if (IsKeyPressed(KEY_UP)) {
-
+            if (state->console_highlight_idx > 1) {
+                state->console_highlight_idx--;
+            }
         } else if (auto_click(state, KEY_BACKSPACE) && e->file_search_buffer_length > 0) {
             e->file_search_buffer_length--;
             e->file_search_buffer[e->file_search_buffer_length] = '\0';
@@ -991,22 +1037,19 @@ void editor_input(State *state) {
             return;
         } else if (IsKeyPressed(KEY_ENTER)) {
             char filename[128];
-            int i;
-            for (i = 0; e->filename_buffer[i] != '\n'; i++) {
-                filename[i] = e->filename_buffer[i];
-            }
-            filename[i] = '\0';
+            console_get_highlighted_text(state, filename);
             char filepath[128];
             sprintf(filepath, "programs\\%s", filename);
             editor_load_file(state, filepath);
             e->file_search_buffer[0] = '\0';
             e->file_search_buffer_length = 0;
             e->file_cursor = 0;
+            state->console_highlight_idx = -1;
             state->state = STATE_EDITOR;
         } else {
             for (KeyboardKey key = 32; key < 127; key++) {
                 if (IsKeyPressed(key) && e->file_search_buffer_length < EDITOR_FILE_SEARCH_BUFFER_MAX - 1) {
-                    char c = uppercase_on_condition(key, shift);
+                    char c = keyboard_key_to_char(state, key, shift);
                     e->file_search_buffer[e->file_search_buffer_length] = c;
                     e->file_search_buffer_length++;
                     e->file_search_buffer[e->file_search_buffer_length] = '\0';
@@ -1030,6 +1073,9 @@ void editor_input(State *state) {
             finder_update_matches(state);
         } else if (IsKeyPressed(KEY_ENTER)) {
             if (e->finder_buffer_length == 0 || e->finder_matches == 0) {
+                char buffer[64 + EDITOR_FINDER_BUFFER_MAX];
+                sprintf(buffer, "Find text:\n\"%s\"\n0 matches", state->editor.finder_buffer);
+                console_set_text(state, buffer);
                 return;
             }
             if (e->finder_match_idx == -1) {
@@ -1052,6 +1098,15 @@ void editor_input(State *state) {
                                 set_cursor_x(state, match_end - e->finder_buffer_length);
                                 set_cursor_selection_x(state, match_end);
                                 center_visual_vertical_offset_around_cursor(state);
+                                char buffer[64 + EDITOR_FINDER_BUFFER_MAX];
+                                sprintf(
+                                    buffer,
+                                    "Find text:\n\"%s\"\nMatch %i of %i",
+                                    state->editor.finder_buffer,
+                                    state->editor.finder_match_idx + 1,
+                                    state->editor.finder_matches
+                                );
+                                console_set_text(state, buffer);
                                 return;
                             }
                             match_idx++;
@@ -1061,20 +1116,11 @@ void editor_input(State *state) {
                     }
                 }
             }
-            char buffer[64 + EDITOR_FINDER_BUFFER_MAX];
-            sprintf(
-                buffer,
-                "Find text:\n\"%s\"\nMatch %i of %i",
-                state->editor.finder_buffer,
-                state->editor.finder_match_idx + 1,
-                state->editor.finder_matches
-            );
-            console_set_text(state, buffer);
         } else {
             for (KeyboardKey key = 32; key < 127; key++) {
                 if (IsKeyPressed(key) && e->finder_buffer_length < EDITOR_FINDER_BUFFER_MAX - 1) {
                     e->finder_match_idx = -1;
-                    char c = uppercase_on_condition(key, shift);
+                    char c = keyboard_key_to_char(state, key, shift);
                     e->finder_buffer[e->finder_buffer_length] = c;
                     e->finder_buffer_length++;
                     e->finder_buffer[e->finder_buffer_length] = '\0';
@@ -1082,6 +1128,9 @@ void editor_input(State *state) {
                     return;
                 }
             }
+        }
+        if (e->finder_buffer_length == 0) {
+            console_set_text(state, "Find text:");
         }
     } return;
     case STATE_EDITOR_GO_TO_LINE: {
@@ -1313,7 +1362,6 @@ static void editor_render_base(State *state, float line_height, float char_width
             DrawTextCodepoint(state->font, c, position, line_height, color);
         }
     }
-
 }
 
 static void editor_render_state_write(State *state) {
@@ -1364,7 +1412,7 @@ static void editor_render_state_write(State *state) {
     if (e->cursor_anim_time > pi2) {
         e->cursor_anim_time -= pi2;
     }
-    float alpha = (cos(e->cursor_anim_time) + 1.0) * 127.5;
+    float alpha = (cos(e->cursor_anim_time) + 1.0) * 127.5f;
     Editor_Cursor_Render_Data cursor_data = {
         .y = e->cursor.y,
         .line_number_offset = line_number_padding,

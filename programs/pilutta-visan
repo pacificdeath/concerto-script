@@ -1,0 +1,71 @@
+bpm 140
+
+define motif_1 (
+    duration 8
+    A3 play D play F# play
+    wait
+    B3 play E play G play
+    wait
+)
+
+define motif_2 (
+    duration 8
+    A3 play Db play E play
+    duration 16
+    A play wait B play wait
+    duration 6
+    A play
+    duration 16
+    G play F# play
+    wait
+)
+
+define motif_3 (
+    duration 8
+    A3 play C# play E play
+    duration 16
+    A play wait
+    duration 8
+    play
+    duration 4
+    D play
+    duration 8
+    wait
+)
+
+define section_1 (
+    motif_1
+    motif_2
+    motif_1
+    motif_3
+)
+
+define section_2 (
+    duration 8
+    Gb play
+    duration 16
+    D# play wait
+    duration 8
+    B3 play
+    duration 16
+    B play wait
+    duration 8
+    play G play
+    duration 16 wait
+    duration 16
+    F# play E play wait
+    duration 8
+    D play C# play A3 play
+    duration 16
+    C# play wait
+    duration 8 E play
+    duration 16
+    A play B play A play G play F# play wait
+    motif_1
+    motif_3
+)
+
+repeat 2 (
+    repeat 2 (section_1)
+    repeat 2 (section_2)
+)

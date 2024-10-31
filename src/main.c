@@ -32,6 +32,8 @@ int main (int argc, char **argv) {
     state->window_width = 1500;
     state->window_height = 1000;
 
+    state->console_highlight_idx = -1;
+
     editor_init(state);
 
     SetTraceLogLevel(
@@ -74,6 +76,7 @@ int main (int argc, char **argv) {
     editor_load_file(state, filename);
 
     while (!WindowShouldClose()) {
+        state->keyboard_layout = get_keyboard_layout();
         state->delta_time = GetFrameTime();
 
         editor_input(state);
@@ -81,7 +84,6 @@ int main (int argc, char **argv) {
         switch (state->state) {
         default: break;
         case STATE_TRY_COMPILE: {
-            editor_save_file(state, filename);
             state->compiler_result = compile(state);
             if (state->compiler_result->error_type != NO_ERROR) {
                 console_set_text(state, state->compiler_result->error_message);
@@ -137,6 +139,8 @@ int main (int argc, char **argv) {
         case STATE_EDITOR: {
             editor_render_state_write(state);
         } break;
+        case STATE_EDITOR_SAVE_FILE:
+        case STATE_EDITOR_SAVE_FILE_ERROR:
         case STATE_EDITOR_FILE_EXPLORER:
         case STATE_EDITOR_FIND_TEXT:
         case STATE_EDITOR_GO_TO_LINE:
