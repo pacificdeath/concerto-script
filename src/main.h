@@ -100,6 +100,7 @@ typedef struct Editor {
     int selection_x;
     int selection_y;
     int visual_vertical_offset;
+    int preferred_x;
 
     int autoclick_key;
     float autoclick_down_time;

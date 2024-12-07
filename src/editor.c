@@ -246,8 +246,9 @@ static void set_cursor_x(State *state, int x) {
     e->cursor.x = x;
     e->selection_x = x;
     e->selection_y = e->cursor.y;
-    e->cursor_anim_time = 0.0;
     if (state->state == STATE_EDITOR) {
+        e->cursor_anim_time = 0.0;
+        e->preferred_x = x;
         snap_visual_vertical_offset_to_cursor(state);
     }
 }
@@ -256,6 +257,10 @@ static void set_cursor_y(State *state, int line) {
     Editor *e = &state->editor;
     e->cursor.y = line;
     e->selection_y = line;
+    int len = strlen(e->lines[line]);
+    e->cursor.x = (len > e->preferred_x)
+        ? e->preferred_x
+        : len;
     e->selection_x = e->cursor.x;
     e->cursor_anim_time = 0.0;
 }
@@ -348,12 +353,18 @@ static void undo(State *state) {
 static void set_cursor_selection_x(State *state, int x) {
     state->editor.cursor.x = x;
     state->editor.cursor_anim_time = 0.0;
+    state->editor.preferred_x = x;
     snap_visual_vertical_offset_to_cursor(state);
 }
 
 static void set_cursor_selection_y(State *state, int line) {
+    Editor *e = &state->editor;
     state->editor.cursor.y = line;
     state->editor.cursor_anim_time = 0.0;
+    int len = strlen(e->lines[line]);
+    e->cursor.x = (len > e->preferred_x)
+        ? e->preferred_x
+        : len;
     snap_visual_vertical_offset_to_cursor(state);
 }
 
@@ -599,9 +610,6 @@ static void trigger_key(State *state, int key, bool ctrl, bool shift) {
                 line++;
             }
             set_target_y(state, line);
-            int len = strlen(e->lines[e->cursor.y]);
-            int x = e->cursor.x >= len ? len : e->cursor.x;
-            set_target_x(state, x);
             snap_visual_vertical_offset_to_cursor(state);
         }
         break;
@@ -612,9 +620,6 @@ static void trigger_key(State *state, int key, bool ctrl, bool shift) {
                 line--;
             }
             set_target_y(state, line);
-            int len = strlen(e->lines[e->cursor.y]);
-            int x = e->cursor.x >= len ? len : e->cursor.x;
-            set_target_x(state, x);
             snap_visual_vertical_offset_to_cursor(state);
         }
         break;
@@ -816,6 +821,7 @@ void editor_input(State *state) {
     case STATE_EDITOR: {
         if (ctrl && IsKeyPressed(KEY_O)) {
             update_filename_buffer(state);
+            console_set_text(state, "");
             state->console_highlight_idx = 1;
             state->state = STATE_EDITOR_FILE_EXPLORER;
             return;
@@ -842,10 +848,12 @@ void editor_input(State *state) {
             return;
         }
         if (ctrl && IsKeyPressed(KEY_F)) {
+            console_set_text(state, "");
             state->state = STATE_EDITOR_FIND_TEXT;
             return;
         }
         if (ctrl && IsKeyPressed(KEY_G)) {
+            console_set_text(state, "");
             state->state = STATE_EDITOR_GO_TO_LINE;
             return;
         }
@@ -1574,3 +1582,4 @@ void editor_render_state_play(State *state) {
     }
     DrawRectangleLinesEx(rec, 5, color);
 }
+
