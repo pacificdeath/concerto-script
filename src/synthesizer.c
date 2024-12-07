@@ -83,9 +83,22 @@ void synthesizer_run(void *data) {
             for (int frame = 0; frame < frame_count; frame += 1) {
                 float t = (float)frame / (float)(frame_count - 1); // Normalized time (0.0 to 1.0)
 
-                // float sample = sinf(2.0f * PI * current_frequency * frame / sample_rate);
+                float sample;
                 float x = synthesizer->sounds[i].tone.frequency * frame / sample_rate;
-                float sample = 4.0f * fabs(x - floor(x + 0.75f) + 0.25f) - 1.0f;
+                switch (synthesizer->sounds[i].tone.waveform) {
+                case WAVEFORM_SINE: {
+                    sample = sinf(2.0f * PI * x);
+                } break;
+                case WAVEFORM_TRIANGLE: {
+                    sample = 4.0f * fabsf(x - floorf(x + 0.75f) + 0.25f) - 1.0f;
+                } break;
+                case WAVEFORM_SQUARE: {
+                    sample = 4.0f * floorf(x) - 2.0f * floorf(2.0f * x) + 1.0f;
+                } break;
+                case WAVEFORM_SAWTOOTH: {
+                    sample = 2.0f * (x - floorf(x + 0.5f));
+                } break;
+                }
 
                 float envelope; // Default to full volume
                 if (frame < SYNTHESIZER_FADE_FRAMES) {

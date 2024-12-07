@@ -53,9 +53,18 @@
 #define COMPILER_MAX_PAREN_NESTING 32
 #define COMPILER_VARIABLE_MAX_COUNT 255
 
-#define SYNTHESIZER_FADE_FRAMES 1000
+#define SYNTHESIZER_FADE_FRAMES 500
+
+typedef enum Waveform {
+    WAVEFORM_NONE,
+    WAVEFORM_SINE,
+    WAVEFORM_TRIANGLE,
+    WAVEFORM_SQUARE,
+    WAVEFORM_SAWTOOTH,
+} Waveform;
 
 typedef struct Tone {
+    Waveform waveform;
     uint32_t idx;
     uint16_t line_idx;
     uint16_t char_idx;
@@ -157,6 +166,10 @@ typedef struct Editor_Selection_Render_Data {
 typedef enum Token_Type {
     TOKEN_NONE = 0,
     TOKEN_START,
+    TOKEN_SINE,
+    TOKEN_TRIANGLE,
+    TOKEN_SQUARE,
+    TOKEN_SAWTOOTH,
     TOKEN_NUMBER,
     TOKEN_IDENTIFIER,
     TOKEN_SEMI,
@@ -252,6 +265,7 @@ typedef struct Tone_Add_Data {
     uint32_t idx;
     int note;
     int bpm;
+    Waveform waveform;
 } Tone_Add_Data;
 
 typedef struct Synthesizer_Sound {

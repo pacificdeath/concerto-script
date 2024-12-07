@@ -1418,6 +1418,10 @@ static void editor_render_base(State *state, float line_height, float char_width
                             color = EDITOR_WAIT_COLOR;
                         } else if (
                             strcmp(current_word, "start") == 0 ||
+                            strcmp(current_word, "sine") == 0 ||
+                            strcmp(current_word, "triangle") == 0 ||
+                            strcmp(current_word, "square") == 0 ||
+                            strcmp(current_word, "sawtooth") == 0 ||
                             strcmp(current_word, "define") == 0 ||
                             strcmp(current_word, "repeat") == 0 ||
                             strcmp(current_word, "rounds") == 0 ||

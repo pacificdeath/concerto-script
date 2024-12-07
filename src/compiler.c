@@ -154,18 +154,14 @@ static float note_to_frequency (int semi_offset) {
 }
 
 static void tone_add(Tone_Add_Data *data) {
-    float start_frequency = note_to_frequency(data->note);
     Tone* tone = &(data->result->tones[data->result->tone_amount]);
+    tone->waveform = data->waveform;
     tone->idx = data->idx;
     tone->line_idx = data->token->line_number;
     tone->char_idx = data->token->char_index;
-    switch (data->token->type) {
-    default: tone->char_count = 1; break;
-    case TOKEN_PLAY:
-    case TOKEN_WAIT: tone->char_count = data->token->value.play_or_wait_data.char_count; break;
-    }
+    tone->char_count = data->token->value.play_or_wait_data.char_count;
     tone->note = data->note;
-    tone->frequency = start_frequency;
+    tone->frequency = note_to_frequency(data->note);
     tone->duration = data->token->value.play_or_wait_data.duration * 240.0f / data->bpm;
     unsigned int unsigned_note_from_c0 = (data->note + 57);
     tone->octave = unsigned_note_from_c0 / 12;
@@ -526,6 +522,14 @@ Compiler_Result *compile(State *state) {
                     ident[ident_length] = '\0';
                     if (strcmp("start", ident) == 0) {
                         token_add(result, TOKEN_START);
+                    } else if (strcmp("sine", ident) == 0) {
+                        token_add(result, TOKEN_SINE);
+                    } else if (strcmp("triangle", ident) == 0) {
+                        token_add(result, TOKEN_TRIANGLE);
+                    } else if (strcmp("square", ident) == 0) {
+                        token_add(result, TOKEN_SQUARE);
+                    } else if (strcmp("sawtooth", ident) == 0) {
+                        token_add(result, TOKEN_SAWTOOTH);
                     } else if (strcmp("semi", ident) == 0) {
                         token_add(result, TOKEN_SEMI);
                     } else if (strcmp("play", ident) == 0) {
@@ -586,13 +590,16 @@ Compiler_Result *compile(State *state) {
     // start parser
     {
         Token* tokens = result->tokens;
+
         int nest_idx = -1;
         Repetition nest_repetitions[16];
         for (int i = 0; i < 16; i++) {
             nest_repetitions[i].target = -1;
             nest_repetitions[i].round = 0;
         }
+
         int bpm = 125;
+        Waveform current_waveform = WAVEFORM_SINE;
         int i_return_positions[32];
         int i_return_idx = 0;
         int note = 0;
@@ -601,6 +608,7 @@ Compiler_Result *compile(State *state) {
         int scale = ~0;
         Token *peek_token_ptr;
         bool semi_flag = false;
+
         for (int i = 0; i < result->token_amount; i++) {
             switch (tokens[i].type) {
             case TOKEN_START: {
@@ -613,6 +621,10 @@ Compiler_Result *compile(State *state) {
                 }
                 result->tone_amount = new_idx;
             } break;
+            case TOKEN_SINE:        { current_waveform = WAVEFORM_SINE; } break;
+            case TOKEN_TRIANGLE:    { current_waveform = WAVEFORM_TRIANGLE; } break;
+            case TOKEN_SQUARE:      { current_waveform = WAVEFORM_SQUARE; } break;
+            case TOKEN_SAWTOOTH:    { current_waveform = WAVEFORM_SAWTOOTH; } break;
             case TOKEN_SEMI: {
                 if (!peek_token(result, i, 1, &peek_token_ptr)) {
                     return parser_error(result, ERROR_INVALID_SEMI, i);
@@ -641,7 +653,8 @@ Compiler_Result *compile(State *state) {
                     .token = &tokens[i],
                     .idx = tone_idx++,
                     .note = note,
-                    .bpm = bpm
+                    .bpm = bpm,
+                    .waveform = current_waveform,
                 };
                 tone_add(&tone_add_data);
             } break;
@@ -651,7 +664,8 @@ Compiler_Result *compile(State *state) {
                     .token = &tokens[i],
                     .idx = tone_idx++,
                     .note = SILENCE,
-                    .bpm = bpm
+                    .bpm = bpm,
+                    .waveform = -1,
                 };
                 tone_add(&tone_add_data);
             } break;
