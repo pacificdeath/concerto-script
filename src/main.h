@@ -6,7 +6,8 @@
 #include "raylib.h"
 #include "windows_wrapper.h"
 
-#define OCTAVE_OFFSET 12.0f
+#define OCTAVE 12
+#define MAX_NOTE_FROM_C0 96
 #define MAX_OCTAVE 8
 #define A4_OFFSET 48
 #define A4_FREQ 440.0f
@@ -64,16 +65,24 @@ typedef enum Waveform {
     WAVEFORM_SAWTOOTH,
 } Waveform;
 
+typedef struct Chord {
+    int8_t size;
+    int8_t notes[OCTAVE];
+    float frequencies[OCTAVE];
+} Chord;
+
+bool is_chord_silent(Chord *chord) {
+    return chord->size <= 0;
+}
+
 typedef struct Tone {
     Waveform waveform;
     uint32_t idx;
     uint16_t line_idx;
     uint16_t char_idx;
     uint16_t char_count;
-    int8_t note;
-    float frequency;
+    Chord chord;
     float duration;
-    uint8_t octave;
 } Tone;
 
 typedef enum Editor_Action_Type {
@@ -182,6 +191,7 @@ typedef enum Token_Type {
     TOKEN_BPM,
     TOKEN_PLAY,
     TOKEN_WAIT,
+    TOKEN_CHORD,
     TOKEN_SCALE,
     TOKEN_REPEAT,
     TOKEN_ROUNDS,
@@ -229,7 +239,10 @@ typedef enum Compiler_Error_Type {
     ERROR_NUMBER_TOO_BIG,
     ERROR_NO_MATCHING_OPENING_PAREN,
     ERROR_NESTING_TOO_DEEP,
-    ERROR_SCALE_CAN_ONLY_HAVE_NOTES,
+    ERROR_CHORD_CAN_ONLY_CONTAIN_NOTES,
+    ERROR_CHORD_CAN_NOT_BE_EMPTY,
+    ERROR_CHORD_TOO_MANY_NOTES,
+    ERROR_SCALE_CAN_ONLY_CONTAIN_NOTES,
     ERROR_SCALE_CAN_NOT_BE_EMPTY,
     ERROR_INTERNAL,
 } Compiler_Error_Type;
@@ -255,8 +268,8 @@ typedef enum Note_Direction {
 typedef struct Optional_Scale_Offset_Data {
     Compiler_Result *result;
     int *token_idx;
-    int current_note;
-    uint16_t current_scale;
+    Chord chord;
+    uint16_t scale;
     Note_Direction direction;
 } Optional_Scale_Offset_Data;
 
@@ -264,7 +277,7 @@ typedef struct Tone_Add_Data {
     Compiler_Result *result;
     Token *token;
     uint32_t idx;
-    int note;
+    Chord chord;
     int bpm;
     Waveform waveform;
 } Tone_Add_Data;

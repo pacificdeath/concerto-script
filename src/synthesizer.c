@@ -73,7 +73,7 @@ void synthesizer_run(void *data) {
             printf("malloc failed for audio_data");
             return;
         }
-        if (synthesizer->sounds[i].tone.note == SILENCE) {
+        if (is_chord_silent(&synthesizer->sounds[i].tone.chord)) {
             for (int frame = 0; frame < frame_count; frame += 1) {
                 for (int k = 0; k < channels; k++) {
                     audio_data[frame * channels + k] = 0;
@@ -83,20 +83,32 @@ void synthesizer_run(void *data) {
             for (int frame = 0; frame < frame_count; frame += 1) {
                 float t = (float)frame / (float)(frame_count - 1); // Normalized time (0.0 to 1.0)
 
-                float sample;
-                float x = synthesizer->sounds[i].tone.frequency * frame / sample_rate;
+                Chord *chord = &synthesizer->sounds[i].tone.chord;
+                float samples[chord->size];
                 switch (synthesizer->sounds[i].tone.waveform) {
                 case WAVEFORM_SINE: {
-                    sample = sinf(2.0f * PI * x);
+                    for (int j = 0; j < chord->size; j++) {
+                        float x = chord->frequencies[j] * frame / sample_rate;
+                        samples[j] = sinf(2.0f * PI * x);
+                    }
                 } break;
                 case WAVEFORM_TRIANGLE: {
-                    sample = 4.0f * fabsf(x - floorf(x + 0.75f) + 0.25f) - 1.0f;
+                    for (int j = 0; j < chord->size; j++) {
+                        float x = chord->frequencies[j] * frame / sample_rate;
+                        samples[j] = 4.0f * fabsf(x - floorf(x + 0.75f) + 0.25f) - 1.0f;
+                    }
                 } break;
                 case WAVEFORM_SQUARE: {
-                    sample = 4.0f * floorf(x) - 2.0f * floorf(2.0f * x) + 1.0f;
+                    for (int j = 0; j < chord->size; j++) {
+                        float x = chord->frequencies[j] * frame / sample_rate;
+                        samples[j] = 4.0f * floorf(x) - 2.0f * floorf(2.0f * x) + 1.0f;
+                    }
                 } break;
                 case WAVEFORM_SAWTOOTH: {
-                    sample = 2.0f * (x - floorf(x + 0.5f));
+                    for (int j = 0; j < chord->size; j++) {
+                        float x = chord->frequencies[j] * frame / sample_rate;
+                        samples[j] = 2.0f * (x - floorf(x + 0.5f));
+                    }
                 } break;
                 }
 
@@ -111,9 +123,14 @@ void synthesizer_run(void *data) {
                     envelope = 1.0f;
                 }
 
-                sample *= envelope;
+                float combined_sample = 0;
+                for (int j = 0; j < chord->size; j++) {
+                    combined_sample += (samples[j] * envelope);
+                }
+                combined_sample /= chord->size;
+
                 for (int k = 0; k < channels; k++) {
-                    audio_data[frame * channels + k] = (int16_t)(sample * 32767); // 32767 is the max value for 16-bit audio
+                    audio_data[frame * channels + k] = (int16_t)(combined_sample * 32767); // 32767 is the max value for 16-bit audio
                 }
             }
         }

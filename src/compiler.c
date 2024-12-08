@@ -8,18 +8,29 @@
 #include "raylib.h"
 #include "main.h"
 
+#define CHROMATIC_SCALE (~0)
+#define SILENT_CHORD ((Chord){0})
+#define INVALID_CHORD ((Chord){ .size = -1 })
+
 /*
-    TODO: other waveforms
     TODO:   handle case when some ridiculous person is trying to generate more tokens
             or tones than what is allowed by this thing
 */
 
-static bool peek_token(Compiler_Result *result, int index, int offset, Token **token) {
+static bool has_flag(int flags, int flag) {
+    return (flags & flag) == flag;
+}
+
+static int get_note_flag(int note) {
+    return 1 << (note + MAX_NOTE_FROM_C0) % OCTAVE;
+}
+
+static bool peek_token(Compiler_Result *result, int index, int offset, Token **token_ptr) {
     int actual = index + offset;
     if (actual == 0 || actual >= result->token_amount) {
         return false;
     }
-    *token = &(result->tokens[index + offset]);
+    *token_ptr = &(result->tokens[index + offset]);
     return true;
 }
 
@@ -64,11 +75,20 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
     case ERROR_NESTING_TOO_DEEP:
         sprintf(str_buffer, "Nesting this many \"()\" is too much");
         break;
-    case ERROR_SCALE_CAN_ONLY_HAVE_NOTES:
-        sprintf(str_buffer, "A scale may only contain\nnotes, not this thing");
+    case ERROR_CHORD_CAN_ONLY_CONTAIN_NOTES:
+        sprintf(str_buffer, "Chords may only contain\nnotes, not this thing");
+        break;
+    case ERROR_CHORD_CAN_NOT_BE_EMPTY:
+        sprintf(str_buffer, "Chords can not be completely empty like that");
+        break;
+    case ERROR_CHORD_TOO_MANY_NOTES:
+        sprintf(str_buffer, "Chords can not have this many notes for some reason");
+        break;
+    case ERROR_SCALE_CAN_ONLY_CONTAIN_NOTES:
+        sprintf(str_buffer, "Scales may only contain\nnotes, not this thing");
         break;
     case ERROR_SCALE_CAN_NOT_BE_EMPTY:
-        sprintf(str_buffer, "A scale can not be completely empty");
+        sprintf(str_buffer, "Scales can not be completely empty like that");
         break;
     case ERROR_INTERNAL:
         sprintf(str_buffer, "Internal error");
@@ -149,8 +169,8 @@ static Token *token_add(Compiler_Result *result, Token_Type token_type) {
     return token;
 }
 
-static float note_to_frequency (int semi_offset) {
-    return A4_FREQ * powf(2.0f, (float)semi_offset / OCTAVE_OFFSET);
+static float note_to_frequency(int semi_offset) {
+    return A4_FREQ * powf(2.0f, (float)semi_offset / (float)OCTAVE);
 }
 
 static void tone_add(Tone_Add_Data *data) {
@@ -160,11 +180,11 @@ static void tone_add(Tone_Add_Data *data) {
     tone->line_idx = data->token->line_number;
     tone->char_idx = data->token->char_index;
     tone->char_count = data->token->value.play_or_wait_data.char_count;
-    tone->note = data->note;
-    tone->frequency = note_to_frequency(data->note);
+    tone->chord = data->chord;
+    for (int i = 0; i < data->chord.size; i++) {
+        tone->chord.frequencies[i] = note_to_frequency(data->chord.notes[i]);
+    }
     tone->duration = data->token->value.play_or_wait_data.duration * 240.0f / data->bpm;
-    unsigned int unsigned_note_from_c0 = (data->note + 57);
-    tone->octave = unsigned_note_from_c0 / 12;
     (data->result->tone_amount)++;
 }
 
@@ -250,7 +270,7 @@ static bool try_get_note_token(Compiler_Result *result) {
 
     if (!isspace(line[char_idx])) {
         if (line[char_idx] >= '0' && line[char_idx] <= '8') {
-            octave = (char_to_int(line[char_idx]) * OCTAVE_OFFSET) - A4_OFFSET;
+            octave = (char_to_int(line[char_idx]) * (float)OCTAVE) - A4_OFFSET;
             char_idx++;
         }
         if (note_is_valid_identifier && !isspace(line[char_idx]) && is_valid_in_identifier(line[char_idx])) {
@@ -389,42 +409,69 @@ static bool try_get_play_or_wait_token(Compiler_Result *result) {
     return true;
 }
 
-static int get_scale(int token_amount, Token *tokens, int *token_ptr, Compiler_Error_Type *error) {
-    int scale = 0;
-    while (*token_ptr < token_amount && tokens[*token_ptr].type != TOKEN_PAREN_CLOSE) {
-        if (tokens[*token_ptr].type != TOKEN_NOTE) {
-            (*error) = ERROR_SCALE_CAN_ONLY_HAVE_NOTES;
+static Chord get_chord(int token_amount, Token *tokens, int *token_idx, Compiler_Error_Type *error) {
+    Chord chord = {0};
+    while (*token_idx < token_amount && tokens[*token_idx].type != TOKEN_PAREN_CLOSE) {
+        if (tokens[*token_idx].type != TOKEN_NOTE) {
+            (*error) = ERROR_CHORD_CAN_ONLY_CONTAIN_NOTES;
+            return INVALID_CHORD;
+        }
+        if (chord.size >= OCTAVE) {
+            (*error) = ERROR_CHORD_TOO_MANY_NOTES;
+            return INVALID_CHORD;
+        }
+        chord.notes[chord.size] = tokens[*token_idx].value.int_number;
+        chord.size++;
+        (*token_idx)++;
+    }
+    if (chord.size == 0) {
+        (*error) = ERROR_CHORD_CAN_NOT_BE_EMPTY;
+        return INVALID_CHORD;
+    }
+    return chord;
+}
+
+static int get_scale(int token_amount, Token *tokens, int *token_idx, Compiler_Error_Type *error) {
+    int scale_flags = 0;
+    while (*token_idx < token_amount && tokens[*token_idx].type != TOKEN_PAREN_CLOSE) {
+        if (tokens[*token_idx].type != TOKEN_NOTE) {
+            (*error) = ERROR_SCALE_CAN_ONLY_CONTAIN_NOTES;
             return -1;
         }
-        scale |= 1 << (tokens[*token_ptr].value.int_number + 96) % 12;
-        (*token_ptr)++;
+        scale_flags |= get_note_flag(tokens[*token_idx].value.int_number);
+        (*token_idx)++;
     }
-    if (scale == 0) {
+    if (scale_flags == 0) {
         (*error) = ERROR_SCALE_CAN_NOT_BE_EMPTY;
         return -1;
     }
-    return scale;
+    return scale_flags;
 }
 
-static int parse_optional_scale_offset(Optional_Scale_Offset_Data data) {
+static Chord parse_optional_scale_offset(Optional_Scale_Offset_Data *data) {
     Token *peek_token_ptr;
     int offset = 1; // default offset
-    if (peek_token(data.result, (*data.token_idx), 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_NUMBER) {
-        (*data.token_idx) += 1;
+    if (peek_token(data->result, (*data->token_idx), 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_NUMBER) {
+        (*data->token_idx) += 1;
         offset = peek_token_ptr->value.int_number;
     }
-    int note = data.current_note;
-    for (int j = 0; j < offset; j += 1) {
-        note += data.direction;
-        while (true) {
-            int bit_note = 1 << ((note + 96) % 12);
-            if ((bit_note & data.current_scale) == bit_note) {
-                break;
+    Chord new_chord = {0};
+    new_chord.size = data->chord.size;
+    for (int i = 0; i < data->chord.size; i++) {
+        int note = data->chord.notes[i];
+        for (int j = 0; j < offset; j += 1) {
+            note += data->direction;
+            while (true) {
+                int note_flag = get_note_flag(note);
+                if (has_flag(data->scale, note_flag)) {
+                    break;
+                }
+                note += data->direction;
             }
-            note += data.direction;
         }
+        new_chord.notes[i] = note;
     }
-    return note;
+    return new_chord;
 }
 
 Compiler_Result *compile(State *state) {
@@ -538,6 +585,8 @@ Compiler_Result *compile(State *state) {
                         token_add(result, TOKEN_WAIT);
                     } else if (strcmp("bpm", ident) == 0) {
                         token_add(result, TOKEN_BPM);
+                    } else if (strcmp("chord", ident) == 0) {
+                        token_add(result, TOKEN_CHORD);
                     } else if (strcmp("scale", ident) == 0) {
                         token_add(result, TOKEN_SCALE);
                     } else if (strcmp("rise", ident) == 0) {
@@ -602,7 +651,10 @@ Compiler_Result *compile(State *state) {
         Waveform current_waveform = WAVEFORM_SINE;
         int i_return_positions[32];
         int i_return_idx = 0;
-        int note = 0;
+
+        Chord chord = {0};
+        chord.size = 1;
+
 
         // TODO: scale / scale / define must never be nested
         int scale = ~0;
@@ -639,20 +691,20 @@ Compiler_Result *compile(State *state) {
                 }
                 semi_flag = true;
             } break;
-            case TOKEN_BPM:
+            case TOKEN_BPM: {
                 i += 1;
                 if (i < result->token_amount && tokens[i].type == TOKEN_NUMBER) {
                     bpm = tokens[i].value.int_number;
                 } else {
                     return parser_error(result, ERROR_EXPECTED_NUMBER, i);
                 }
-                break;
+            } break;
             case TOKEN_PLAY: {
                 Tone_Add_Data tone_add_data = {
                     .result = result,
                     .token = &tokens[i],
                     .idx = tone_idx++,
-                    .note = note,
+                    .chord = chord,
                     .bpm = bpm,
                     .waveform = current_waveform,
                 };
@@ -663,28 +715,40 @@ Compiler_Result *compile(State *state) {
                     .result = result,
                     .token = &tokens[i],
                     .idx = tone_idx++,
-                    .note = SILENCE,
+                    .chord = 0,
                     .bpm = bpm,
                     .waveform = -1,
                 };
                 tone_add(&tone_add_data);
             } break;
-            case TOKEN_NOTE:
-                note = tokens[i].value.int_number;
-                break;
+            case TOKEN_NOTE: {
+                chord.size = 1;
+                chord.notes[0] = tokens[i].value.int_number;
+            } break;
             case TOKEN_RISE:
             case TOKEN_FALL: {
                 Optional_Scale_Offset_Data data = {
                     .result = result,
                     .token_idx = &i,
-                    .current_note = note,
-                    .current_scale = semi_flag ? ~0 : scale,
+                    .chord = chord,
+                    .scale = semi_flag ? CHROMATIC_SCALE : scale,
                     .direction = (tokens[i].type == TOKEN_RISE) ? DIRECTION_RISE : DIRECTION_FALL,
                 };
                 semi_flag = false;
-                note = parse_optional_scale_offset(data);
+                chord = parse_optional_scale_offset(&data);
             } break;
-            case TOKEN_SCALE:
+            case TOKEN_CHORD: {
+                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                    return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                }
+                i += 2;
+                Compiler_Error_Type chord_error = NO_ERROR;
+                chord = get_chord(result->token_amount, tokens, &i, &chord_error);
+                if (chord_error != NO_ERROR) {
+                    return parser_error(result, chord_error, i);
+                }
+            } break;
+            case TOKEN_SCALE: {
                 if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
                     return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
                 }
@@ -694,8 +758,8 @@ Compiler_Result *compile(State *state) {
                 if (scale_error != NO_ERROR) {
                     return parser_error(result, scale_error, i);
                 }
-                break;
-            case TOKEN_REPEAT:
+            } break;
+            case TOKEN_REPEAT: {
                 if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_NUMBER) {
                     return parser_error(result, ERROR_EXPECTED_NUMBER, i);
                 }
@@ -708,7 +772,7 @@ Compiler_Result *compile(State *state) {
                     return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
                 }
                 i++;
-                break;
+            } break;
             case TOKEN_ROUNDS: {
                 int rounds[16] = {0};
                 int amount;
@@ -765,7 +829,7 @@ Compiler_Result *compile(State *state) {
                     variable_count++;
                 }
             } break;
-            case TOKEN_IDENTIFIER:
+            case TOKEN_IDENTIFIER: {
                 bool known_identifier = false;
                 for (int j = 0; j < variable_count; j++) {
                     if (strcmp(tokens[i].value.string, variables[j].ident) == 0) {
@@ -779,8 +843,8 @@ Compiler_Result *compile(State *state) {
                 if (!known_identifier) {
                     return parser_error(result, ERROR_UNKNOWN_IDENTIFIER, i);
                 }
-                break;
-            case TOKEN_PAREN_CLOSE:
+            } break;
+            case TOKEN_PAREN_CLOSE: {
                 int paren_return_location = tokens[i].value.int_number;
                 if (paren_return_location > 1 && tokens[paren_return_location - 2].type == TOKEN_REPEAT) {
                     nest_repetitions[nest_idx].round++;
@@ -796,9 +860,8 @@ Compiler_Result *compile(State *state) {
                     i_return_idx--;
                     i = i_return_positions[i_return_idx];
                 }
-                break;
-            default:
-                return parser_error(result, ERROR_SYNTAX_ERROR, i);
+            } break;
+            default: return parser_error(result, ERROR_SYNTAX_ERROR, i);
             }
         }
     }

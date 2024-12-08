@@ -1431,6 +1431,7 @@ static void editor_render_base(State *state, float line_height, float char_width
                             strcmp(current_word, "rounds") == 0 ||
                             strcmp(current_word, "semi") == 0 ||
                             strcmp(current_word, "bpm") == 0 ||
+                            strcmp(current_word, "chord") == 0 ||
                             strcmp(current_word, "scale") == 0 ||
                             strcmp(current_word, "rise") == 0 ||
                             strcmp(current_word, "fall") == 0) {
