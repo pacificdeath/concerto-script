@@ -49,11 +49,6 @@ int main (int argc, char **argv) {
         return 0;
     #endif
 
-    if (argc < 2) {
-        printf("You are a horrible person\n");
-        exit(-1);
-    }
-
     InitAudioDevice();
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
@@ -69,7 +64,7 @@ int main (int argc, char **argv) {
     Synthesizer *synthesizer = NULL;
     Thread *synth_thread;
 
-    char *filename = argv[1];
+    char *filename = (argc > 1) ? argv[1] : NULL;
 
     bool is_playing = false;
 

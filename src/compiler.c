@@ -44,9 +44,6 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
     case NO_ERROR:
         sprintf(str_buffer, "No error");
         break;
-    case ERROR_NO_SOUND:
-        sprintf(str_buffer, "This produces no sound or silence");
-        break;
     case ERROR_SYNTAX_ERROR:
         sprintf(str_buffer, "This is wrong");
         break;
@@ -871,7 +868,8 @@ static void run_parser(Compiler_Result *result) {
     }
 
     if (result->tone_amount == 0) {
-        parser_error(result, ERROR_NO_SOUND, 0);
+        result->error_type = ERROR_NO_SOUND;
+        sprintf(result->error_message, "This produces no sound or silence");
         return;
     }
 }

@@ -2,7 +2,6 @@
 setlocal enabledelayedexpansion
 
 set D="-g -DDEBUG"
-set PROGRAM=""
 set DEBUG=""
 set GDB=0
 set TEST_THREAD=""
@@ -18,8 +17,6 @@ for %%x in (%*) do (
     ) else if "%%x"=="test-thread" (
         set DEBUG=%D%
         set TEST_THREAD="-DTEST_THREAD"
-    ) else (
-        set PROGRAM="%%x"
     )
 )
 
@@ -68,15 +65,15 @@ if not %errorlevel% equ 0 (
 
 if %errorlevel% equ 0 (
     if !GDB!==1 (
-        gdb --args main.exe !PROGRAM!
+        gdb --args main.exe
     ) else (
-        main.exe !PROGRAM!
+        main.exe
     )
 )
 goto :end
 
 :help
-    echo %0 ^[Options^] ^<Program File^>
+    echo %0 ^[Options^]
     echo Options:
     echo    help           this thing
     echo    d              enable debug
