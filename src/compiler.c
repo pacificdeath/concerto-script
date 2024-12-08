@@ -11,6 +11,8 @@
 #define CHROMATIC_SCALE (~0)
 #define SILENT_CHORD ((Chord){0})
 #define INVALID_CHORD ((Chord){ .size = -1 })
+#define MAX_PAREN_NESTING 32
+#define VARIABLE_MAX_COUNT 255
 
 /*
     TODO:   handle case when some ridiculous person is trying to generate more tokens
@@ -41,6 +43,9 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
     switch (result->error_type) {
     case NO_ERROR:
         sprintf(str_buffer, "No error");
+        break;
+    case ERROR_NO_SOUND:
+        sprintf(str_buffer, "This produces no sound or silence");
         break;
     case ERROR_SYNTAX_ERROR:
         sprintf(str_buffer, "This is wrong");
@@ -79,16 +84,16 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         sprintf(str_buffer, "Chords may only contain\nnotes, not this thing");
         break;
     case ERROR_CHORD_CAN_NOT_BE_EMPTY:
-        sprintf(str_buffer, "Chords can not be completely empty like that");
+        sprintf(str_buffer, "Chords can not be completely\nempty like that");
         break;
     case ERROR_CHORD_TOO_MANY_NOTES:
-        sprintf(str_buffer, "Chords can not have this many notes for some reason");
+        sprintf(str_buffer, "Chords can not have this many\nnotes for some reason");
         break;
     case ERROR_SCALE_CAN_ONLY_CONTAIN_NOTES:
         sprintf(str_buffer, "Scales may only contain\nnotes, not this thing");
         break;
     case ERROR_SCALE_CAN_NOT_BE_EMPTY:
-        sprintf(str_buffer, "Scales can not be completely empty like that");
+        sprintf(str_buffer, "Scales can not be completely\nempty like that");
         break;
     case ERROR_INTERNAL:
         sprintf(str_buffer, "Internal error");
@@ -146,16 +151,14 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
     return;
 }
 
-static Compiler_Result *lexer_error(Compiler_Result *result, Compiler_Error_Type error_type) {
+static void *lexer_error(Compiler_Result *result, Compiler_Error_Type error_type) {
     result->error_type = error_type;
     populate_error_message(result, result->line_number, result->char_idx);
-    return result;
 }
 
-static Compiler_Result *parser_error(Compiler_Result *result, Compiler_Error_Type error_type, int token_idx) {
+static void *parser_error(Compiler_Result *result, Compiler_Error_Type error_type, int token_idx) {
     result->error_type = error_type;
     populate_error_message(result, result->tokens[token_idx].line_number, result->tokens[token_idx].char_index);
-    return result;
 }
 
 static Token *token_add(Compiler_Result *result, Token_Type token_type) {
@@ -474,149 +477,136 @@ static Chord parse_optional_scale_offset(Optional_Scale_Offset_Data *data) {
     return new_chord;
 }
 
-Compiler_Result *compile(State *state) {
-    int data_len = state->editor.line_count;
-    char *data[state->editor.line_count];
-    for (int i = 0; i < data_len; i++) {
-        data[i] = state->editor.lines[i];
-    }
-
-    Compiler_Result *result = (Compiler_Result *)malloc(sizeof(Compiler_Result));
-    result->data = data;
-    result->data_len = data_len;
-    result->tokens = NULL;
-    result->tones = NULL;
-    result->line_number = -1;
-    result->char_idx = 0;
-    result->error_type = NO_ERROR;
-
+static void run_lexer(Compiler_Result *result) {
     result->token_amount = 0;
     result->tokens = (Token *)malloc(sizeof(Token) * 4096);
     if (result->tokens == NULL) {
         printf("malloc failed for tokens\n");
         result->error_type = ERROR_INTERNAL;
-        return result;
+        return;
     }
 
-    result->tone_amount = 0;
-    result->tones = NULL;
-
-    // start lexer
-    {
-        int paren_nest_level = 0;
-        int paren_open_addresses[COMPILER_MAX_PAREN_NESTING] = {0};
-        for (int line_i = 0; line_i < data_len; line_i++) {
-            char *line = data[line_i];
-            result->line_number++;
-            result->char_idx = 0;
-            for (int *i = &(result->char_idx); line[*i] != '\0' && line[*i] != COMMENT_CHAR; *i += 1) {
-                if (isspace(line[*i])) {
-                    continue;
+    int paren_nest_level = 0;
+    int paren_open_addresses[MAX_PAREN_NESTING] = {0};
+    for (int line_i = 0; line_i < result->data_len; line_i++) {
+        char *line = result->data[line_i];
+        result->line_number++;
+        result->char_idx = 0;
+        for (int *i = &(result->char_idx); line[*i] != '\0' && line[*i] != COMMENT_CHAR; *i += 1) {
+            if (isspace(line[*i])) {
+                continue;
+            }
+            switch (line[*i]) {
+            case '(':
+                {
+                    if (paren_nest_level >= MAX_PAREN_NESTING) {
+                        lexer_error(result, ERROR_NESTING_TOO_DEEP);
+                        return;
+                    }
+                    Token *token = token_add(result, TOKEN_PAREN_OPEN);
+                    token->value.int_number = -1;
+                    paren_open_addresses[paren_nest_level] = token->address;
+                    paren_nest_level += 1;
                 }
-                switch (line[*i]) {
-                case '(':
-                    {
-                        if (paren_nest_level >= COMPILER_MAX_PAREN_NESTING) {
-                            return lexer_error(result, ERROR_NESTING_TOO_DEEP);
-                        }
-                        Token *token = token_add(result, TOKEN_PAREN_OPEN);
-                        token->value.int_number = -1;
-                        paren_open_addresses[paren_nest_level] = token->address;
-                        paren_nest_level += 1;
+                break;
+            case ')':
+                {
+                    paren_nest_level -= 1;
+                    if (paren_nest_level < 0) {
+                        lexer_error(result, ERROR_NO_MATCHING_OPENING_PAREN);
+                        return;
                     }
-                    break;
-                case ')':
-                    {
-                        paren_nest_level -= 1;
-                        if (paren_nest_level < 0) {
-                            return lexer_error(result, ERROR_NO_MATCHING_OPENING_PAREN);
-                        }
-                        Token *token = token_add(result, TOKEN_PAREN_CLOSE);
-                        int paren_open_address = paren_open_addresses[paren_nest_level];
-                        token->value.int_number = paren_open_address;
-                        result->tokens[paren_open_address].value.int_number = token->address;
-                    }
-                    break;
-                default:
-                    if (try_get_note_token(result)) {
-                        break;
-                    }
-                    if (try_get_play_or_wait_token(result)) {
-                        break;
-                    }
-                    if (isdigit(line[*i])) {
-                        Compiler_Error_Type str_to_int_error = NO_ERROR;
-                        int number = str_to_int(line, *i, &str_to_int_error);
-                        if (str_to_int_error != NO_ERROR) {
-                            return lexer_error(result, str_to_int_error);
-                        }
-                        Token *token = token_add(result, TOKEN_NUMBER);
-                        token->value.int_number = number;
-                        *i += (digit_count(number) - 1);
-                        break;
-                    }
-                    if (!is_valid_in_identifier(line[*i])) {
-                        return lexer_error(result, ERROR_SYNTAX_ERROR);
-                    }
-                    int ident_length = 0;
-                    for (int j = *i; is_valid_in_identifier(line[j]); j++) {
-                        ident_length++;
-                    }
-                    char ident[1024];
-                    for (int j = 0; j < ident_length; j++) {
-                        ident[j] = line[*i + j];
-                    }
-                    ident[ident_length] = '\0';
-                    if (strcmp("start", ident) == 0) {
-                        token_add(result, TOKEN_START);
-                    } else if (strcmp("sine", ident) == 0) {
-                        token_add(result, TOKEN_SINE);
-                    } else if (strcmp("triangle", ident) == 0) {
-                        token_add(result, TOKEN_TRIANGLE);
-                    } else if (strcmp("square", ident) == 0) {
-                        token_add(result, TOKEN_SQUARE);
-                    } else if (strcmp("sawtooth", ident) == 0) {
-                        token_add(result, TOKEN_SAWTOOTH);
-                    } else if (strcmp("semi", ident) == 0) {
-                        token_add(result, TOKEN_SEMI);
-                    } else if (strcmp("play", ident) == 0) {
-                        token_add(result, TOKEN_PLAY);
-                    } else if (strcmp("wait", ident) == 0) {
-                        token_add(result, TOKEN_WAIT);
-                    } else if (strcmp("bpm", ident) == 0) {
-                        token_add(result, TOKEN_BPM);
-                    } else if (strcmp("chord", ident) == 0) {
-                        token_add(result, TOKEN_CHORD);
-                    } else if (strcmp("scale", ident) == 0) {
-                        token_add(result, TOKEN_SCALE);
-                    } else if (strcmp("rise", ident) == 0) {
-                        token_add(result, TOKEN_RISE);
-                    } else if (strcmp("fall", ident) == 0) {
-                        token_add(result, TOKEN_FALL);
-                    } else if (strcmp("repeat", ident) == 0) {
-                        token_add(result, TOKEN_REPEAT);
-                    } else if (strcmp("rounds", ident) == 0) {
-                        token_add(result, TOKEN_ROUNDS);
-                    } else if (strcmp("define", ident) == 0) {
-                        token_add(result, TOKEN_DEFINE);
-                    } else {
-                        Token *token = token_add(result, TOKEN_IDENTIFIER);
-                        token->value.string = (char *)malloc(sizeof(char) * (ident_length + 1));
-                        strcpy(token->value.string, ident);
-                    }
-                    *i += (ident_length - 1);
+                    Token *token = token_add(result, TOKEN_PAREN_CLOSE);
+                    int paren_open_address = paren_open_addresses[paren_nest_level];
+                    token->value.int_number = paren_open_address;
+                    result->tokens[paren_open_address].value.int_number = token->address;
+                }
+                break;
+            default:
+                if (try_get_note_token(result)) {
                     break;
                 }
+                if (try_get_play_or_wait_token(result)) {
+                    break;
+                }
+                if (isdigit(line[*i])) {
+                    Compiler_Error_Type str_to_int_error = NO_ERROR;
+                    int number = str_to_int(line, *i, &str_to_int_error);
+                    if (str_to_int_error != NO_ERROR) {
+                        lexer_error(result, str_to_int_error);
+                        return;
+                    }
+                    Token *token = token_add(result, TOKEN_NUMBER);
+                    token->value.int_number = number;
+                    *i += (digit_count(number) - 1);
+                    break;
+                }
+                if (!is_valid_in_identifier(line[*i])) {
+                    lexer_error(result, ERROR_SYNTAX_ERROR);
+                    return;
+                }
+                int ident_length = 0;
+                for (int j = *i; is_valid_in_identifier(line[j]); j++) {
+                    ident_length++;
+                }
+                char ident[1024];
+                for (int j = 0; j < ident_length; j++) {
+                    ident[j] = line[*i + j];
+                }
+                ident[ident_length] = '\0';
+                if (strcmp("start", ident) == 0) {
+                    token_add(result, TOKEN_START);
+                } else if (strcmp("sine", ident) == 0) {
+                    token_add(result, TOKEN_SINE);
+                } else if (strcmp("triangle", ident) == 0) {
+                    token_add(result, TOKEN_TRIANGLE);
+                } else if (strcmp("square", ident) == 0) {
+                    token_add(result, TOKEN_SQUARE);
+                } else if (strcmp("sawtooth", ident) == 0) {
+                    token_add(result, TOKEN_SAWTOOTH);
+                } else if (strcmp("semi", ident) == 0) {
+                    token_add(result, TOKEN_SEMI);
+                } else if (strcmp("play", ident) == 0) {
+                    token_add(result, TOKEN_PLAY);
+                } else if (strcmp("wait", ident) == 0) {
+                    token_add(result, TOKEN_WAIT);
+                } else if (strcmp("bpm", ident) == 0) {
+                    token_add(result, TOKEN_BPM);
+                } else if (strcmp("chord", ident) == 0) {
+                    token_add(result, TOKEN_CHORD);
+                } else if (strcmp("scale", ident) == 0) {
+                    token_add(result, TOKEN_SCALE);
+                } else if (strcmp("rise", ident) == 0) {
+                    token_add(result, TOKEN_RISE);
+                } else if (strcmp("fall", ident) == 0) {
+                    token_add(result, TOKEN_FALL);
+                } else if (strcmp("repeat", ident) == 0) {
+                    token_add(result, TOKEN_REPEAT);
+                } else if (strcmp("rounds", ident) == 0) {
+                    token_add(result, TOKEN_ROUNDS);
+                } else if (strcmp("define", ident) == 0) {
+                    token_add(result, TOKEN_DEFINE);
+                } else {
+                    Token *token = token_add(result, TOKEN_IDENTIFIER);
+                    token->value.string = (char *)malloc(sizeof(char) * (ident_length + 1));
+                    strcpy(token->value.string, ident);
+                }
+                *i += (ident_length - 1);
+                break;
             }
         }
     }
-    // end lexer
+}
+
+static void run_parser(Compiler_Result *result) {
+    Token* tokens = result->tokens;
 
     for (int i = 0; i < result->token_amount; i += 1) {
         switch (result->tokens[i].type) {
         case TOKEN_PAREN_OPEN:
             if (result->tokens[i].value.int_number < 0) {
-                return parser_error(result, ERROR_NO_MATCHING_CLOSING_PAREN, i);
+                parser_error(result, ERROR_NO_MATCHING_CLOSING_PAREN, i);
+                return;
             }
             break;
         default:
@@ -624,252 +614,303 @@ Compiler_Result *compile(State *state) {
         }
     }
 
-    Token_Variable variables[COMPILER_VARIABLE_MAX_COUNT] = {0};
+    result->tone_amount = 0;
+    result->tones = NULL;
+
+    Token_Variable variables[VARIABLE_MAX_COUNT] = {0};
     int variable_count = 0;
 
     result->tones = (Tone *)malloc(sizeof(Tone) * 4096);
     if (result->tones == NULL) {
         printf("malloc failed for tones\n");
         result->error_type = ERROR_INTERNAL;
-        return result;
+        result;
+        return;
     }
 
     uint32_t tone_idx = 0;
 
-    // start parser
-    {
-        Token* tokens = result->tokens;
+    int nest_idx = -1;
+    Repetition nest_repetitions[16];
+    for (int i = 0; i < 16; i++) {
+        nest_repetitions[i].target = -1;
+        nest_repetitions[i].round = 0;
+    }
 
-        int nest_idx = -1;
-        Repetition nest_repetitions[16];
-        for (int i = 0; i < 16; i++) {
-            nest_repetitions[i].target = -1;
-            nest_repetitions[i].round = 0;
-        }
+    int bpm = 125;
+    Waveform current_waveform = WAVEFORM_SINE;
+    int i_return_positions[32];
+    int i_return_idx = 0;
 
-        int bpm = 125;
-        Waveform current_waveform = WAVEFORM_SINE;
-        int i_return_positions[32];
-        int i_return_idx = 0;
+    Chord chord = {0};
+    chord.size = 1;
 
-        Chord chord = {0};
-        chord.size = 1;
+    // TODO: scale / scale / define must never be nested
+    int scale = ~0;
+    Token *peek_token_ptr;
+    bool semi_flag = false;
 
-
-        // TODO: scale / scale / define must never be nested
-        int scale = ~0;
-        Token *peek_token_ptr;
-        bool semi_flag = false;
-
-        for (int i = 0; i < result->token_amount; i++) {
-            switch (tokens[i].type) {
-            case TOKEN_START: {
-                int old_idx = tone_idx + 1;
-                int new_idx = 0;
-                while (old_idx < result->tone_amount) {
-                    result->tones[new_idx] = result->tones[old_idx];
-                    old_idx++;
-                    new_idx++;
-                }
-                result->tone_amount = new_idx;
-            } break;
-            case TOKEN_SINE:        { current_waveform = WAVEFORM_SINE; } break;
-            case TOKEN_TRIANGLE:    { current_waveform = WAVEFORM_TRIANGLE; } break;
-            case TOKEN_SQUARE:      { current_waveform = WAVEFORM_SQUARE; } break;
-            case TOKEN_SAWTOOTH:    { current_waveform = WAVEFORM_SAWTOOTH; } break;
-            case TOKEN_SEMI: {
-                if (!peek_token(result, i, 1, &peek_token_ptr)) {
-                    return parser_error(result, ERROR_INVALID_SEMI, i);
-                }
-                switch (peek_token_ptr->type) {
-                case TOKEN_RISE:
-                case TOKEN_FALL:
-                    break;
-                default:
-                    return parser_error(result, ERROR_INVALID_SEMI, i);
-                    break;
-                }
-                semi_flag = true;
-            } break;
-            case TOKEN_BPM: {
-                i += 1;
-                if (i < result->token_amount && tokens[i].type == TOKEN_NUMBER) {
-                    bpm = tokens[i].value.int_number;
-                } else {
-                    return parser_error(result, ERROR_EXPECTED_NUMBER, i);
-                }
-            } break;
-            case TOKEN_PLAY: {
-                Tone_Add_Data tone_add_data = {
-                    .result = result,
-                    .token = &tokens[i],
-                    .idx = tone_idx++,
-                    .chord = chord,
-                    .bpm = bpm,
-                    .waveform = current_waveform,
-                };
-                tone_add(&tone_add_data);
-            } break;
-            case TOKEN_WAIT: {
-                Tone_Add_Data tone_add_data = {
-                    .result = result,
-                    .token = &tokens[i],
-                    .idx = tone_idx++,
-                    .chord = 0,
-                    .bpm = bpm,
-                    .waveform = -1,
-                };
-                tone_add(&tone_add_data);
-            } break;
-            case TOKEN_NOTE: {
-                chord.size = 1;
-                chord.notes[0] = tokens[i].value.int_number;
-            } break;
-            case TOKEN_RISE:
-            case TOKEN_FALL: {
-                Optional_Scale_Offset_Data data = {
-                    .result = result,
-                    .token_idx = &i,
-                    .chord = chord,
-                    .scale = semi_flag ? CHROMATIC_SCALE : scale,
-                    .direction = (tokens[i].type == TOKEN_RISE) ? DIRECTION_RISE : DIRECTION_FALL,
-                };
-                semi_flag = false;
-                chord = parse_optional_scale_offset(&data);
-            } break;
-            case TOKEN_CHORD: {
-                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                    return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                }
-                i += 2;
-                Compiler_Error_Type chord_error = NO_ERROR;
-                chord = get_chord(result->token_amount, tokens, &i, &chord_error);
-                if (chord_error != NO_ERROR) {
-                    return parser_error(result, chord_error, i);
-                }
-            } break;
-            case TOKEN_SCALE: {
-                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                    return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                }
-                i += 2;
-                Compiler_Error_Type scale_error = NO_ERROR;
-                scale = get_scale(result->token_amount, tokens, &i, &scale_error);
-                if (scale_error != NO_ERROR) {
-                    return parser_error(result, scale_error, i);
-                }
-            } break;
-            case TOKEN_REPEAT: {
-                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_NUMBER) {
-                    return parser_error(result, ERROR_EXPECTED_NUMBER, i);
-                }
-                i++;
-                int repeat_amount = tokens[i].value.int_number;
-                nest_idx += 1;
-                nest_repetitions[nest_idx].target = repeat_amount;
-                nest_repetitions[nest_idx].round = 0;
-                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                    return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                }
-                i++;
-            } break;
-            case TOKEN_ROUNDS: {
-                int rounds[16] = {0};
-                int amount;
-                for (
-                    amount = 0;
-                    peek_token(result, i + amount, 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_NUMBER;
-                    amount++
-                ) {
-                    rounds[amount] = peek_token_ptr->value.int_number;
-                }
-                if (amount == 0) {
-                    return parser_error(result, ERROR_EXPECTED_NUMBER, i);
-                }
-                i += amount;
-                if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                    return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                }
-                i++;
-                bool special_round = false;
-                for (int j = 0; j < amount; j++) {
-                    if ((rounds[j] - 1) == nest_repetitions[nest_idx].round) {
-                        special_round = true;
-                        break;
-                    }
-                }
-                if (!special_round) {
-                    int paren_close_location = tokens[i].value.int_number;
-                    i = paren_close_location;
-                }
-            } break;
-            case TOKEN_DEFINE: {
-                if (!peek_token(result, i, 1 , &peek_token_ptr) || peek_token_ptr->type != TOKEN_IDENTIFIER) {
-                    return parser_error(result, ERROR_EXPECTED_IDENTIFIER, i);
-                }
-                i++;
-                bool new_variable = true;
-                int variable_idx = variable_count;
-                for (int j = 0; j < variable_count; j++) {
-                    if (strcmp(tokens[i].value.string, variables[j].ident) == 0) {
-                        new_variable = false;
-                        variable_idx = j;
-                        break;
-                    }
-                }
-                variables[variable_idx].ident = tokens[i].value.string;
-                if (peek_token(result, i, 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_PAREN_OPEN) {
-                    int paren_close_location = peek_token_ptr->value.int_number;
-                    i = paren_close_location;
-                    variables[variable_idx].address = peek_token_ptr->address;
-                } else {
-                    return parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                }
-                if (new_variable) {
-                    variable_count++;
-                }
-            } break;
-            case TOKEN_IDENTIFIER: {
-                bool known_identifier = false;
-                for (int j = 0; j < variable_count; j++) {
-                    if (strcmp(tokens[i].value.string, variables[j].ident) == 0) {
-                        known_identifier = true;
-                        i_return_positions[i_return_idx] = i;
-                        i_return_idx += 1;
-                        i = variables[j].address;
-                        break;
-                    }
-                }
-                if (!known_identifier) {
-                    return parser_error(result, ERROR_UNKNOWN_IDENTIFIER, i);
-                }
-            } break;
-            case TOKEN_PAREN_CLOSE: {
-                int paren_return_location = tokens[i].value.int_number;
-                if (paren_return_location > 1 && tokens[paren_return_location - 2].type == TOKEN_REPEAT) {
-                    nest_repetitions[nest_idx].round++;
-                    if (nest_repetitions[nest_idx].round < nest_repetitions[nest_idx].target) {
-                        int paren_open_idx = tokens[i].value.int_number;
-                        i = paren_open_idx;
-                    } else {
-                        nest_repetitions[nest_idx].target = -1;
-                        nest_repetitions[nest_idx].round = 0;
-                        nest_idx -= 1;
-                    }
-                } else if (paren_return_location > 1 && tokens[paren_return_location - 2].type == TOKEN_DEFINE) {
-                    i_return_idx--;
-                    i = i_return_positions[i_return_idx];
-                }
-            } break;
-            default: return parser_error(result, ERROR_SYNTAX_ERROR, i);
+    for (int i = 0; i < result->token_amount; i++) {
+        switch (tokens[i].type) {
+        case TOKEN_START: {
+            int old_idx = tone_idx + 1;
+            int new_idx = 0;
+            while (old_idx < result->tone_amount) {
+                result->tones[new_idx] = result->tones[old_idx];
+                old_idx++;
+                new_idx++;
             }
+            result->tone_amount = new_idx;
+        } break;
+        case TOKEN_SINE:        { current_waveform = WAVEFORM_SINE; } break;
+        case TOKEN_TRIANGLE:    { current_waveform = WAVEFORM_TRIANGLE; } break;
+        case TOKEN_SQUARE:      { current_waveform = WAVEFORM_SQUARE; } break;
+        case TOKEN_SAWTOOTH:    { current_waveform = WAVEFORM_SAWTOOTH; } break;
+        case TOKEN_SEMI: {
+            if (!peek_token(result, i, 1, &peek_token_ptr)) {
+                parser_error(result, ERROR_INVALID_SEMI, i);
+                return;
+            }
+            switch (peek_token_ptr->type) {
+            case TOKEN_RISE:
+            case TOKEN_FALL:
+                break;
+            default:
+                parser_error(result, ERROR_INVALID_SEMI, i);
+                return;
+            }
+            semi_flag = true;
+        } break;
+        case TOKEN_BPM: {
+            i += 1;
+            if (i < result->token_amount && tokens[i].type == TOKEN_NUMBER) {
+                bpm = tokens[i].value.int_number;
+            } else {
+                parser_error(result, ERROR_EXPECTED_NUMBER, i);
+                return;
+            }
+        } break;
+        case TOKEN_PLAY: {
+            Tone_Add_Data tone_add_data = {
+                .result = result,
+                .token = &tokens[i],
+                .idx = tone_idx++,
+                .chord = chord,
+                .bpm = bpm,
+                .waveform = current_waveform,
+            };
+            tone_add(&tone_add_data);
+        } break;
+        case TOKEN_WAIT: {
+            Tone_Add_Data tone_add_data = {
+                .result = result,
+                .token = &tokens[i],
+                .idx = tone_idx++,
+                .chord = 0,
+                .bpm = bpm,
+                .waveform = -1,
+            };
+            tone_add(&tone_add_data);
+        } break;
+        case TOKEN_NOTE: {
+            chord.size = 1;
+            chord.notes[0] = tokens[i].value.int_number;
+        } break;
+        case TOKEN_RISE:
+        case TOKEN_FALL: {
+            Optional_Scale_Offset_Data data = {
+                .result = result,
+                .token_idx = &i,
+                .chord = chord,
+                .scale = semi_flag ? CHROMATIC_SCALE : scale,
+                .direction = (tokens[i].type == TOKEN_RISE) ? DIRECTION_RISE : DIRECTION_FALL,
+            };
+            semi_flag = false;
+            chord = parse_optional_scale_offset(&data);
+        } break;
+        case TOKEN_CHORD: {
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i += 2;
+            Compiler_Error_Type chord_error = NO_ERROR;
+            chord = get_chord(result->token_amount, tokens, &i, &chord_error);
+            if (chord_error != NO_ERROR) {
+                parser_error(result, chord_error, i);
+                return;
+            }
+        } break;
+        case TOKEN_SCALE: {
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i += 2;
+            Compiler_Error_Type scale_error = NO_ERROR;
+            scale = get_scale(result->token_amount, tokens, &i, &scale_error);
+            if (scale_error != NO_ERROR) {
+                parser_error(result, scale_error, i);
+                return;
+            }
+        } break;
+        case TOKEN_REPEAT: {
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_NUMBER) {
+                parser_error(result, ERROR_EXPECTED_NUMBER, i);
+                return;
+            }
+            i++;
+            int repeat_amount = tokens[i].value.int_number;
+            nest_idx += 1;
+            nest_repetitions[nest_idx].target = repeat_amount;
+            nest_repetitions[nest_idx].round = 0;
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i++;
+        } break;
+        case TOKEN_ROUNDS: {
+            int rounds[16] = {0};
+            int amount;
+            for (
+                amount = 0;
+                peek_token(result, i + amount, 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_NUMBER;
+                amount++
+            ) {
+                rounds[amount] = peek_token_ptr->value.int_number;
+            }
+            if (amount == 0) {
+                parser_error(result, ERROR_EXPECTED_NUMBER, i);
+                return;
+            }
+            i += amount;
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i++;
+            bool special_round = false;
+            for (int j = 0; j < amount; j++) {
+                if ((rounds[j] - 1) == nest_repetitions[nest_idx].round) {
+                    special_round = true;
+                    break;
+                }
+            }
+            if (!special_round) {
+                int paren_close_location = tokens[i].value.int_number;
+                i = paren_close_location;
+            }
+        } break;
+        case TOKEN_DEFINE: {
+            if (!peek_token(result, i, 1 , &peek_token_ptr) || peek_token_ptr->type != TOKEN_IDENTIFIER) {
+                parser_error(result, ERROR_EXPECTED_IDENTIFIER, i);
+                return;
+            }
+            i++;
+            bool new_variable = true;
+            int variable_idx = variable_count;
+            for (int j = 0; j < variable_count; j++) {
+                if (strcmp(tokens[i].value.string, variables[j].ident) == 0) {
+                    new_variable = false;
+                    variable_idx = j;
+                    break;
+                }
+            }
+            variables[variable_idx].ident = tokens[i].value.string;
+            if (peek_token(result, i, 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_PAREN_OPEN) {
+                int paren_close_location = peek_token_ptr->value.int_number;
+                i = paren_close_location;
+                variables[variable_idx].address = peek_token_ptr->address;
+            } else {
+                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            if (new_variable) {
+                variable_count++;
+            }
+        } break;
+        case TOKEN_IDENTIFIER: {
+            bool known_identifier = false;
+            for (int j = 0; j < variable_count; j++) {
+                if (strcmp(tokens[i].value.string, variables[j].ident) == 0) {
+                    known_identifier = true;
+                    i_return_positions[i_return_idx] = i;
+                    i_return_idx += 1;
+                    i = variables[j].address;
+                    break;
+                }
+            }
+            if (!known_identifier) {
+                parser_error(result, ERROR_UNKNOWN_IDENTIFIER, i);
+                return;
+            }
+        } break;
+        case TOKEN_PAREN_CLOSE: {
+            int paren_return_location = tokens[i].value.int_number;
+            if (paren_return_location > 1 && tokens[paren_return_location - 2].type == TOKEN_REPEAT) {
+                nest_repetitions[nest_idx].round++;
+                if (nest_repetitions[nest_idx].round < nest_repetitions[nest_idx].target) {
+                    int paren_open_idx = tokens[i].value.int_number;
+                    i = paren_open_idx;
+                } else {
+                    nest_repetitions[nest_idx].target = -1;
+                    nest_repetitions[nest_idx].round = 0;
+                    nest_idx -= 1;
+                }
+            } else if (paren_return_location > 1 && tokens[paren_return_location - 2].type == TOKEN_DEFINE) {
+                i_return_idx--;
+                i = i_return_positions[i_return_idx];
+            }
+        } break;
+        default: {
+            parser_error(result, ERROR_SYNTAX_ERROR, i);
+            return;
+        } break;
         }
     }
-    // end parser
 
     if (result->tone_amount == 0) {
-        result->error_type = ERROR_NO_SOUND;
-        strcpy(result->error_message, "This produces no sound or silence");
+        parser_error(result, ERROR_NO_SOUND, 0);
+        return;
+    }
+}
+
+Compiler_Result *compile(State *state) {
+    Compiler_Result *result = (Compiler_Result *)malloc(sizeof(Compiler_Result));
+
+    if (result == NULL) {
+        printf("malloc failed for compiler\n");
+        result->error_type = ERROR_INTERNAL;
+        return result;
+    }
+
+    result->data_len = state->editor.line_count;
+    result->data = (char**)malloc(sizeof(char *) * state->editor.line_count);
+
+    if (result->data == NULL) {
+        printf("malloc failed for data\n");
+        result->error_type = ERROR_INTERNAL;
+        return result;
+    }
+
+    for (int i = 0; i < result->data_len; i++) {
+        result->data[i] = state->editor.lines[i];
+    }
+
+    result->tokens = NULL;
+    result->tones = NULL;
+    result->line_number = -1;
+    result->char_idx = 0;
+    result->error_type = NO_ERROR;
+
+    run_lexer(result);
+    if (result->error_type != NO_ERROR) {
+        return result;
+    }
+
+    run_parser(result);
+    if (result->error_type != NO_ERROR) {
         return result;
     }
 
@@ -890,6 +931,10 @@ void compiler_result_free(State *state) {
         default:
             break;
         }
+    }
+    if (cr->data != NULL) {
+        free(cr->data);
+        cr->data = NULL;
     }
     if (cr->tokens != NULL) {
         free(cr->tokens);
