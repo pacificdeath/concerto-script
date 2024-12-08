@@ -821,7 +821,6 @@ void editor_input(State *state) {
     case STATE_EDITOR: {
         if (ctrl && IsKeyPressed(KEY_O)) {
             update_filename_buffer(state);
-            console_set_text(state, "");
             state->console_highlight_idx = 1;
             state->state = STATE_EDITOR_FILE_EXPLORER;
             return;
@@ -1586,4 +1585,3 @@ void editor_render_state_play(State *state) {
     }
     DrawRectangleLinesEx(rec, 5, color);
 }
-
