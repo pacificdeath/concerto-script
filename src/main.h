@@ -13,6 +13,7 @@
 #define MAX_NOTE 50
 #define MIN_NOTE -44
 #define SILENCE (MAX_NOTE + 1)
+#define COMMENT_CHAR '!'
 
 #define EDITOR_MAX_VISUAL_LINES 30
 #define EDITOR_LINE_CAPACITY 256

@@ -1308,7 +1308,7 @@ static bool is_note_at_coord(State *state, Editor_Coord coord) {
     Editor *e = &state->editor;
     char c = e->lines[coord.y][coord.x];
 
-    bool first_char_is_valid = 
+    bool first_char_is_valid =
         (c >= 'a' && c <= 'g') ||
         (c >= 'A' && c <= 'G');
 
@@ -1320,6 +1320,7 @@ static bool is_note_at_coord(State *state, Editor_Coord coord) {
     for (int offset = 1; offset < 4; offset++) {
         char offset_char = e->lines[coord.y][coord.x + offset];
         switch (offset_char) {
+        case COMMENT_CHAR: return true;
         case '#':
         case 'b':
         case 'B': {
@@ -1376,6 +1377,7 @@ static void editor_render_base(State *state, float line_height, float char_width
             if (found_word) {
                 switch (c) {
                 default: break;
+                case COMMENT_CHAR:
                 case '(':
                 case ')':
                 case ' ':
@@ -1439,7 +1441,7 @@ static void editor_render_base(State *state, float line_height, float char_width
                     }
                 } else {
                     switch (c) {
-                    case '!':
+                    case COMMENT_CHAR:
                         rest_is_comment = true;
                         color = EDITOR_COMMENT_COLOR;
                         break;

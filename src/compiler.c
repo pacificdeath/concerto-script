@@ -462,7 +462,7 @@ Compiler_Result *compile(State *state) {
             char *line = data[line_i];
             result->line_number++;
             result->char_idx = 0;
-            for (int *i = &(result->char_idx); line[*i] != '\0' && line[*i] != '!'; *i += 1) {
+            for (int *i = &(result->char_idx); line[*i] != '\0' && line[*i] != COMMENT_CHAR; *i += 1) {
                 if (isspace(line[*i])) {
                     continue;
                 }
