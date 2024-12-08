@@ -12,7 +12,6 @@
 #define SILENT_CHORD ((Chord){0})
 #define INVALID_CHORD ((Chord){ .size = -1 })
 #define MAX_PAREN_NESTING 32
-#define VARIABLE_MAX_COUNT 255
 
 /*
     TODO:   handle case when some ridiculous person is trying to generate more tokens
@@ -73,6 +72,9 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
         break;
     case ERROR_NO_MATCHING_CLOSING_PAREN:
         sprintf(str_buffer, "This has no matching \')\'");
+        break;
+    case ERROR_MULTIPLE_DEFINITIONS:
+        sprintf(str_buffer, "This has already been defined");
         break;
     case ERROR_NESTING_TOO_DEEP:
         sprintf(str_buffer, "Nesting this many \"()\" is too much");
@@ -153,7 +155,7 @@ static void *lexer_error(Compiler_Result *result, Compiler_Error_Type error_type
     populate_error_message(result, result->line_number, result->char_idx);
 }
 
-static void *parser_error(Compiler_Result *result, Compiler_Error_Type error_type, int token_idx) {
+static void *validator_error(Compiler_Result *result, Compiler_Error_Type error_type, int token_idx) {
     result->error_type = error_type;
     populate_error_message(result, result->tokens[token_idx].line_number, result->tokens[token_idx].char_index);
 }
@@ -179,12 +181,12 @@ static void tone_add(Tone_Add_Data *data) {
     tone->idx = data->idx;
     tone->line_idx = data->token->line_number;
     tone->char_idx = data->token->char_index;
-    tone->char_count = data->token->value.play_or_wait_data.char_count;
+    tone->char_count = data->token->value.play_or_wait.char_count;
     tone->chord = data->chord;
     for (int i = 0; i < data->chord.size; i++) {
         tone->chord.frequencies[i] = note_to_frequency(data->chord.notes[i]);
     }
-    tone->duration = data->token->value.play_or_wait_data.duration * 240.0f / data->bpm;
+    tone->duration = data->token->value.play_or_wait.duration * 240.0f / data->bpm;
     (data->result->tone_amount)++;
 }
 
@@ -402,8 +404,8 @@ static bool try_get_play_or_wait_token(Compiler_Result *result) {
     }
 
     Token *token = token_add(result, token_type);
-    token->value.play_or_wait_data.duration = duration_divisor;
-    token->value.play_or_wait_data.char_count = char_idx - result->char_idx;
+    token->value.play_or_wait.duration = duration_divisor;
+    token->value.play_or_wait.char_count = char_idx - result->char_idx;
     result->char_idx = char_idx - 1;
 
     return true;
@@ -595,6 +597,167 @@ static void run_lexer(Compiler_Result *result) {
     }
 }
 
+static void run_validator(Compiler_Result *result) {
+    Token* tokens = result->tokens;
+
+    for (int i = 0; i < result->token_amount; i += 1) {
+        switch (result->tokens[i].type) {
+        case TOKEN_PAREN_OPEN:
+            if (result->tokens[i].value.int_number < 0) {
+                validator_error(result, ERROR_NO_MATCHING_CLOSING_PAREN, i);
+                return;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    result->variable_count = 0;
+
+    Token *peek_token_ptr;
+
+    for (int i = 0; i < result->token_amount; i++) {
+        switch (tokens[i].type) {
+        case TOKEN_START:
+        case TOKEN_SINE:
+        case TOKEN_TRIANGLE:
+        case TOKEN_SQUARE:
+        case TOKEN_SAWTOOTH:
+        case TOKEN_PLAY:
+        case TOKEN_WAIT:
+        case TOKEN_NOTE:
+        case TOKEN_PAREN_CLOSE: {
+            // these are valid in isolation
+        } break;
+        case TOKEN_SEMI: {
+            if (!peek_token(result, i, 1, &peek_token_ptr)) {
+                validator_error(result, ERROR_INVALID_SEMI, i);
+                return;
+            }
+            switch (peek_token_ptr->type) {
+            case TOKEN_RISE:
+            case TOKEN_FALL:
+                break;
+            default:
+                validator_error(result, ERROR_INVALID_SEMI, i);
+                return;
+            }
+        } break;
+        case TOKEN_RISE:
+        case TOKEN_FALL: {
+            if (peek_token(result, i, 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_NUMBER) {
+                i++;
+            }
+        } break;
+        case TOKEN_BPM: {
+            i += 1;
+            if (i >= result->token_amount || tokens[i].type != TOKEN_NUMBER) {
+                validator_error(result, ERROR_EXPECTED_NUMBER, i);
+                return;
+            }
+        } break;
+        case TOKEN_CHORD: {
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                validator_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i += 2;
+            Compiler_Error_Type chord_error = NO_ERROR;
+            Chord chord = get_chord(result->token_amount, tokens, &i, &chord_error);
+            if (chord_error != NO_ERROR) {
+                validator_error(result, chord_error, i);
+                return;
+            }
+        } break;
+        case TOKEN_SCALE: {
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                validator_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i += 2;
+            Compiler_Error_Type scale_error = NO_ERROR;
+            int scale = get_scale(result->token_amount, tokens, &i, &scale_error);
+            if (scale_error != NO_ERROR) {
+                validator_error(result, scale_error, i);
+                return;
+            }
+        } break;
+        case TOKEN_REPEAT: {
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_NUMBER) {
+                validator_error(result, ERROR_EXPECTED_NUMBER, i);
+                return;
+            }
+            i++;
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                validator_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i++;
+        } break;
+        case TOKEN_ROUNDS: {
+            int amount;
+            for (
+                amount = 0;
+                peek_token(result, i + amount, 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_NUMBER;
+                amount++
+            );
+            if (amount == 0) {
+                validator_error(result, ERROR_EXPECTED_NUMBER, i);
+                return;
+            }
+            tokens[i].value.int_number = amount;
+            i += amount;
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                validator_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i++;
+        } break;
+        case TOKEN_DEFINE: {
+            if (!peek_token(result, i, 1 , &peek_token_ptr) || peek_token_ptr->type != TOKEN_IDENTIFIER) {
+                validator_error(result, ERROR_EXPECTED_IDENTIFIER, i);
+                return;
+            }
+            i++;
+            bool new_variable = true;
+            int variable_idx = result->variable_count;
+            for (int j = 0; j < result->variable_count; j++) {
+                if (strcmp(tokens[i].value.string, result->variables[j].ident) == 0) {
+                    validator_error(result, ERROR_MULTIPLE_DEFINITIONS, i);
+                    return;
+                }
+            }
+            result->variables[variable_idx].ident = tokens[i].value.string;
+            result->variable_count++;
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                validator_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i++;
+            result->variables[variable_idx].address = tokens[i].address;
+        } break;
+        case TOKEN_IDENTIFIER: {
+            bool known_identifier = false;
+            for (int j = 0; j < result->variable_count; j++) {
+                if (strcmp(tokens[i].value.string, result->variables[j].ident) == 0) {
+                    known_identifier = true;
+                    break;
+                }
+            }
+            if (!known_identifier) {
+                validator_error(result, ERROR_UNKNOWN_IDENTIFIER, i);
+                return;
+            }
+        } break;
+        default: {
+            validator_error(result, ERROR_SYNTAX_ERROR, i);
+            return;
+        } break;
+        }
+    }
+}
+
 static void run_parser(Compiler_Result *result) {
     Token* tokens = result->tokens;
 
@@ -602,7 +765,7 @@ static void run_parser(Compiler_Result *result) {
         switch (result->tokens[i].type) {
         case TOKEN_PAREN_OPEN:
             if (result->tokens[i].value.int_number < 0) {
-                parser_error(result, ERROR_NO_MATCHING_CLOSING_PAREN, i);
+                validator_error(result, ERROR_NO_MATCHING_CLOSING_PAREN, i);
                 return;
             }
             break;
@@ -613,9 +776,6 @@ static void run_parser(Compiler_Result *result) {
 
     result->tone_amount = 0;
     result->tones = NULL;
-
-    Token_Variable variables[VARIABLE_MAX_COUNT] = {0};
-    int variable_count = 0;
 
     result->tones = (Tone *)malloc(sizeof(Tone) * 4096);
     if (result->tones == NULL) {
@@ -642,7 +802,6 @@ static void run_parser(Compiler_Result *result) {
     Chord chord = {0};
     chord.size = 1;
 
-    // TODO: scale / scale / define must never be nested
     int scale = ~0;
     Token *peek_token_ptr;
     bool semi_flag = false;
@@ -664,28 +823,11 @@ static void run_parser(Compiler_Result *result) {
         case TOKEN_SQUARE:      { current_waveform = WAVEFORM_SQUARE; } break;
         case TOKEN_SAWTOOTH:    { current_waveform = WAVEFORM_SAWTOOTH; } break;
         case TOKEN_SEMI: {
-            if (!peek_token(result, i, 1, &peek_token_ptr)) {
-                parser_error(result, ERROR_INVALID_SEMI, i);
-                return;
-            }
-            switch (peek_token_ptr->type) {
-            case TOKEN_RISE:
-            case TOKEN_FALL:
-                break;
-            default:
-                parser_error(result, ERROR_INVALID_SEMI, i);
-                return;
-            }
             semi_flag = true;
         } break;
         case TOKEN_BPM: {
             i += 1;
-            if (i < result->token_amount && tokens[i].type == TOKEN_NUMBER) {
-                bpm = tokens[i].value.int_number;
-            } else {
-                parser_error(result, ERROR_EXPECTED_NUMBER, i);
-                return;
-            }
+            bpm = tokens[i].value.int_number;
         } break;
         case TOKEN_PLAY: {
             Tone_Add_Data tone_add_data = {
@@ -726,66 +868,30 @@ static void run_parser(Compiler_Result *result) {
             chord = parse_optional_scale_offset(&data);
         } break;
         case TOKEN_CHORD: {
-            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                return;
-            }
             i += 2;
             Compiler_Error_Type chord_error = NO_ERROR;
             chord = get_chord(result->token_amount, tokens, &i, &chord_error);
-            if (chord_error != NO_ERROR) {
-                parser_error(result, chord_error, i);
-                return;
-            }
         } break;
         case TOKEN_SCALE: {
-            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                return;
-            }
             i += 2;
             Compiler_Error_Type scale_error = NO_ERROR;
             scale = get_scale(result->token_amount, tokens, &i, &scale_error);
-            if (scale_error != NO_ERROR) {
-                parser_error(result, scale_error, i);
-                return;
-            }
         } break;
         case TOKEN_REPEAT: {
-            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_NUMBER) {
-                parser_error(result, ERROR_EXPECTED_NUMBER, i);
-                return;
-            }
             i++;
             int repeat_amount = tokens[i].value.int_number;
             nest_idx += 1;
             nest_repetitions[nest_idx].target = repeat_amount;
             nest_repetitions[nest_idx].round = 0;
-            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                return;
-            }
             i++;
         } break;
         case TOKEN_ROUNDS: {
             int rounds[16] = {0};
-            int amount;
-            for (
-                amount = 0;
-                peek_token(result, i + amount, 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_NUMBER;
-                amount++
-            ) {
-                rounds[amount] = peek_token_ptr->value.int_number;
-            }
-            if (amount == 0) {
-                parser_error(result, ERROR_EXPECTED_NUMBER, i);
-                return;
+            int amount = tokens[i].value.int_number;
+            for (int j = 0; j < amount; j++) {
+                rounds[j] = tokens[i + j + 1].value.int_number;
             }
             i += amount;
-            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                return;
-            }
             i++;
             bool special_round = false;
             for (int j = 0; j < amount; j++) {
@@ -795,57 +901,33 @@ static void run_parser(Compiler_Result *result) {
                 }
             }
             if (!special_round) {
-                int paren_close_location = tokens[i].value.int_number;
-                i = paren_close_location;
+                int paren_close_address = tokens[i].value.int_number;
+                i = paren_close_address;
             }
         } break;
         case TOKEN_DEFINE: {
-            if (!peek_token(result, i, 1 , &peek_token_ptr) || peek_token_ptr->type != TOKEN_IDENTIFIER) {
-                parser_error(result, ERROR_EXPECTED_IDENTIFIER, i);
-                return;
-            }
-            i++;
-            bool new_variable = true;
-            int variable_idx = variable_count;
-            for (int j = 0; j < variable_count; j++) {
-                if (strcmp(tokens[i].value.string, variables[j].ident) == 0) {
-                    new_variable = false;
-                    variable_idx = j;
-                    break;
-                }
-            }
-            variables[variable_idx].ident = tokens[i].value.string;
-            if (peek_token(result, i, 1, &peek_token_ptr) && peek_token_ptr->type == TOKEN_PAREN_OPEN) {
-                int paren_close_location = peek_token_ptr->value.int_number;
-                i = paren_close_location;
-                variables[variable_idx].address = peek_token_ptr->address;
-            } else {
-                parser_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
-                return;
-            }
-            if (new_variable) {
-                variable_count++;
-            }
+            i += 2;
+            int paren_close_address = tokens[i].value.int_number;
+            i = paren_close_address;
         } break;
         case TOKEN_IDENTIFIER: {
-            bool known_identifier = false;
-            for (int j = 0; j < variable_count; j++) {
-                if (strcmp(tokens[i].value.string, variables[j].ident) == 0) {
-                    known_identifier = true;
+            for (int j = 0; j < result->variable_count; j++) {
+                if (strcmp(tokens[i].value.string, result->variables[j].ident) == 0) {
                     i_return_positions[i_return_idx] = i;
                     i_return_idx += 1;
-                    i = variables[j].address;
+                    i = result->variables[j].address;
                     break;
                 }
-            }
-            if (!known_identifier) {
-                parser_error(result, ERROR_UNKNOWN_IDENTIFIER, i);
-                return;
             }
         } break;
         case TOKEN_PAREN_CLOSE: {
-            int paren_return_location = tokens[i].value.int_number;
-            if (paren_return_location > 1 && tokens[paren_return_location - 2].type == TOKEN_REPEAT) {
+            int paren_return_address = tokens[i].value.int_number;
+            if (paren_return_address <= 1) {
+                break;
+            }
+            Token_Type parent_token_type = tokens[paren_return_address - 2].type;
+            switch (parent_token_type) {
+            case TOKEN_REPEAT: {
                 nest_repetitions[nest_idx].round++;
                 if (nest_repetitions[nest_idx].round < nest_repetitions[nest_idx].target) {
                     int paren_open_idx = tokens[i].value.int_number;
@@ -855,14 +937,15 @@ static void run_parser(Compiler_Result *result) {
                     nest_repetitions[nest_idx].round = 0;
                     nest_idx -= 1;
                 }
-            } else if (paren_return_location > 1 && tokens[paren_return_location - 2].type == TOKEN_DEFINE) {
+            } break;
+            case TOKEN_DEFINE: {
                 i_return_idx--;
                 i = i_return_positions[i_return_idx];
+            } break;
+            default: {
+                break;
             }
-        } break;
-        default: {
-            parser_error(result, ERROR_SYNTAX_ERROR, i);
-            return;
+            }
         } break;
         }
     }
@@ -903,6 +986,11 @@ Compiler_Result *compile(State *state) {
     result->error_type = NO_ERROR;
 
     run_lexer(result);
+    if (result->error_type != NO_ERROR) {
+        return result;
+    }
+
+    run_validator(result);
     if (result->error_type != NO_ERROR) {
         return result;
     }

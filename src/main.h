@@ -46,11 +46,13 @@
 #define EDITOR_SELECTION_COLOR      (Color) { 0X00, 0X88, 0XFF, 0X88 }
 
 #define CONSOLE_LINE_CAPACITY 32
-#define CONSOLE_LINE_MAX_LENGTH 256
+#define CONSOLE_LINE_MAX_LENGTH 255
 #define CONSOLE_BG_COLOR (Color) {0, 0, 0, 255}
 #define CONSOLE_FG_DEFAULT_COLOR (Color) {0, 255, 0, 255}
 #define CONSOLE_FG_ERROR_COLOR (Color) {255, 0, 0, 255}
 #define CONSOLE_HIGHLIGHT_COLOR (Color) {0, 255, 255, 128}
+
+#define VARIABLE_MAX_COUNT 255
 
 #define SYNTHESIZER_FADE_FRAMES 500
 
@@ -200,7 +202,7 @@ typedef union Token_Value {
     struct {
         float duration;
         int char_count;
-    } play_or_wait_data;
+    } play_or_wait;
     char *string;
 } Token_Value;
 
@@ -231,6 +233,7 @@ typedef enum Compiler_Error_Type {
     ERROR_EXPECTED_IDENTIFIER,
     ERROR_EXPECTED_PAREN_OPEN,
     ERROR_NO_MATCHING_CLOSING_PAREN,
+    ERROR_MULTIPLE_DEFINITIONS,
     ERROR_NO_SCALE_IDENTIFIER,
     ERROR_EXPECTED_NUMBER,
     ERROR_NUMBER_TOO_BIG,
@@ -255,6 +258,8 @@ typedef struct Compiler_Result {
     Token *tokens;
     int tone_amount;
     Tone *tones;
+    Token_Variable variables[VARIABLE_MAX_COUNT];
+    int variable_count;
 } Compiler_Result;
 
 typedef enum Note_Direction {
