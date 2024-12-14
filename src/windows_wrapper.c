@@ -17,7 +17,7 @@ Keyboard_Layout get_keyboard_layout() {
     }
 }
 
-void sleep(u32 milliseconds) {
+void sleep(unsigned long milliseconds) {
     Sleep(milliseconds);
 }
 
@@ -58,15 +58,17 @@ int list_files(char *dir, char *buffer, int max) {
 }
 
 Thread thread_create(void (*thread_function)(void *), void *thread_argument) {
-    return (HANDLE)_beginthread(thread_function, 0, thread_argument);
+    int stack_size = 0;
+    return (HANDLE)_beginthread(thread_function, stack_size, thread_argument);
 }
 
 void thread_join(Thread thread) {
-    u32 result = WaitForSingleObject(thread, INFINITE);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
 }
 
-void thread_destroy(Thread thread) {
-    CloseHandle(thread);
+void thread_error() {
+    ExitThread(1);
 }
 
 Mutex mutex_create() {
@@ -76,7 +78,7 @@ Mutex mutex_create() {
 }
 
 void mutex_lock(Mutex mutex) {
-    u32 result = WaitForSingleObject((HANDLE)mutex, INFINITE);
+    WaitForSingleObject((HANDLE)mutex, INFINITE);
 }
 
 void mutex_unlock(Mutex mutex) {

@@ -2,78 +2,75 @@
 #include "main.h"
 #include "windows_wrapper.h"
 
+inline static void sound_buffer_free(Sound_Buffer *buffer) {
+    for (int i = 0; i < buffer->sound_count; i++) {
+        UnloadSound(buffer->sounds[i].sound);
+        free(buffer->sounds[i].raw_data);
+    }
+    buffer->sound_count = 0;
+}
+
 bool is_synthesizer_sound_playing(Synthesizer_Sound *s) {
-    return s != NULL && IsSoundPlaying((s->sound));
+    if (s == NULL) {
+        return false;
+    }
+
+    return IsSoundPlaying(s->sound);
 }
 
-Synthesizer *synthesizer_allocate(Tone *tones, int tone_amount, int *error) {
-    Synthesizer *synthesizer = (Synthesizer *)malloc(sizeof(Synthesizer));
-    if (synthesizer == NULL) {
-        printf("malloc failed for synthesizer\n");
-        (*error) = 1;
-        return synthesizer;
-    }
-    synthesizer->sounds = malloc(sizeof(Synthesizer_Sound) * tone_amount);
-    if (synthesizer->sounds == NULL) {
-        printf("malloc failed for tones\n");
-        (*error) = 2;
-        return synthesizer;
-    }
-    for (int i = 0; i < tone_amount; i += 1) {
-        synthesizer->sounds[i].tone = tones[i];
-    }
+void synthesizer_init(Synthesizer *synthesizer) {
     synthesizer->current_sound_idx = -1;
-    synthesizer->sound_count = 0;
-    synthesizer->sound_capacity = tone_amount;
-    synthesizer->should_cancel = false;
-    synthesizer->mutex = mutex_create();
-    (*error) = 0;
-    return synthesizer;
-}
-
-Synthesizer_Sound *synthesizer_try_pop(Synthesizer *synthesizer) {
-    mutex_lock(synthesizer->mutex);
-        if ((synthesizer->current_sound_idx) >= (synthesizer->sound_count - 1)) {
-            mutex_unlock(synthesizer->mutex);
-            return NULL;
-        }
-        synthesizer->current_sound_idx += 1;
-    mutex_unlock(synthesizer->mutex);
-    return &(synthesizer->sounds[synthesizer->current_sound_idx]);
+    for (int i = 0; i < 2; i++) {
+        synthesizer->buffers[i].mutex = mutex_create();
+    }
+    synthesizer->front_buffer = &synthesizer->buffers[0];
+    synthesizer->back_buffer = &synthesizer->buffers[1];
 }
 
 void synthesizer_cancel(Synthesizer *synthesizer) {
-    mutex_lock(synthesizer->mutex);
-        synthesizer->should_cancel = true;
-    mutex_unlock(synthesizer->mutex);
+    synthesizer->flags |= SYNTHESIZER_FLAG_SHOULD_CANCEL;
 }
 
-void synthesizer_free(Synthesizer *synthesizer) {
-    mutex_lock(synthesizer->mutex);
-    for (int i = 0; i < synthesizer->sound_count; i += 1) {
-        UnloadSound((synthesizer->sounds[i].sound));
-        free(synthesizer->sounds[i].raw_data);
+void synthesizer_reset(Synthesizer *synthesizer) {
+    for (int i = 0; i < 2; i++) {
+        Sound_Buffer *b = &synthesizer->buffers[i];
+        mutex_lock(b->mutex);
+            sound_buffer_free(b);
+        mutex_unlock(b->mutex);
     }
-    free(synthesizer->sounds);
-    mutex_destroy(synthesizer->mutex);
-    free(synthesizer);
+    synthesizer->current_sound_idx = -1;
 }
 
-void synthesizer_run(void *data) {
-    Synthesizer *synthesizer = (Synthesizer *)data;
+void synthesizer_back_buffer_generate_data(Synthesizer *synthesizer, Compiler *compiler) {
+    Sound_Buffer *back_buffer = synthesizer->back_buffer;
+
+    mutex_lock(back_buffer->mutex);
+        for (int i = 0; i < compiler->tone_amount; i++) {
+            back_buffer->sounds[i].tone = compiler->tones[i];
+            back_buffer->sound_count++;
+        }
+    mutex_unlock(back_buffer->mutex);
+
+    if (back_buffer->sound_count == 0) {
+        synthesizer->flags |= SYNTHESIZER_FLAG_COMPLETED;
+        return;
+    }
+
+    back_buffer->sound_count = 0;
+
     const int sample_rate = 44100;
     const int channels = 2;
     const int sample_size = 16; // 16 bits per sample
     int bytes_per_sample = sample_size / 8;
-    for (int i = 0; i < synthesizer->sound_capacity; i += 1) {
-        int frame_count = synthesizer->sounds[i].tone.duration * sample_rate;
+
+    for (int i = 0; i < SYNTHESIZER_TONE_CAPACITY; i++) {
+        int frame_count = back_buffer->sounds[i].tone.duration * sample_rate;
         int data_size = frame_count * channels * bytes_per_sample;
         int16_t *audio_data = (int16_t *)malloc(data_size);
         if (audio_data == NULL) {
-            printf("malloc failed for audio_data");
-            return;
+            thread_error();
         }
-        if (is_chord_silent(&synthesizer->sounds[i].tone.chord)) {
+        if (is_chord_silent(&back_buffer->sounds[i].tone.chord)) {
             for (int frame = 0; frame < frame_count; frame += 1) {
                 for (int k = 0; k < channels; k++) {
                     audio_data[frame * channels + k] = 0;
@@ -83,9 +80,9 @@ void synthesizer_run(void *data) {
             for (int frame = 0; frame < frame_count; frame += 1) {
                 float t = (float)frame / (float)(frame_count - 1); // Normalized time (0.0 to 1.0)
 
-                Chord *chord = &synthesizer->sounds[i].tone.chord;
+                Chord *chord = &back_buffer->sounds[i].tone.chord;
                 float samples[chord->size];
-                switch (synthesizer->sounds[i].tone.waveform) {
+                switch (back_buffer->sounds[i].tone.waveform) {
                 case WAVEFORM_SINE: {
                     for (int j = 0; j < chord->size; j++) {
                         float x = chord->frequencies[j] * frame / sample_rate;
@@ -142,33 +139,57 @@ void synthesizer_run(void *data) {
         wave.channels = channels;
         wave.data = audio_data;
 
-        mutex_lock(synthesizer->mutex);
-            synthesizer->sounds[i].raw_data = audio_data;
-            synthesizer->sounds[synthesizer->sound_count].sound = LoadSoundFromWave(wave);
-            synthesizer->sound_count += 1;
-        mutex_unlock(synthesizer->mutex);
+        mutex_lock(back_buffer->mutex);
+            back_buffer->sounds[i].raw_data = audio_data;
+            back_buffer->sounds[i].sound = LoadSoundFromWave(wave);
+            back_buffer->sound_count++;
+            if (i >= (compiler->tone_amount - 1)) {
+                synthesizer->flags |= SYNTHESIZER_FLAG_SOUND_BUFFER_SWAP_REQUIRED;
+                mutex_unlock(back_buffer->mutex);
+                break;
+            }
+        mutex_unlock(back_buffer->mutex);
 
-        if (synthesizer->should_cancel) {
-            return;
+        if (has_flag(synthesizer->flags, SYNTHESIZER_FLAG_SHOULD_CANCEL)) {
+            for (int i = 0; i < 2; i++) {
+                Sound_Buffer *b = &synthesizer->buffers[i];
+                mutex_lock(b->mutex);
+                    sound_buffer_free(b);
+                mutex_unlock(b->mutex);
+            }
+            break;
         }
     }
 }
 
-#ifdef DEBUG_LIST_FREQUENCIES
-    static void print_tones(int tone_amount, Tone *tones) {
-        printf("TONE AMOUNT: %d\n", tone_amount);
-        for (int i = 0; i < tone_amount; i++) {
-            if (tones[i].note == SILENCE) {
-                printf("silent  %.2fsec\n",
-                    tones[i].duration
-                );
-            } else {
-                printf("%-6d  %.2fsec  %.2fHz\n",
-                    tones[i].note,
-                    tones[i].duration,
-                    tones[i].frequency
-                );
-            }
+Synthesizer_Sound *synthesizer_front_buffer_try_get_sound(Synthesizer *synthesizer) {
+    Sound_Buffer *front_buffer = synthesizer->front_buffer;
+    mutex_lock(front_buffer->mutex);
+        if (synthesizer->current_sound_idx >= (front_buffer->sound_count - 1)) {
+            mutex_unlock(front_buffer->mutex);
+            return NULL;
         }
-    }
-#endif
+        synthesizer->current_sound_idx++;
+    mutex_unlock(front_buffer->mutex);
+    return &(front_buffer->sounds[synthesizer->current_sound_idx]);
+}
+
+bool synthesizer_swap_sound_buffers(Synthesizer *synthesizer) {
+    mutex_lock(synthesizer->front_buffer->mutex);
+    mutex_lock(synthesizer->back_buffer->mutex);
+
+    Sound_Buffer *temp_buffer = synthesizer->front_buffer;
+    synthesizer->front_buffer = synthesizer->back_buffer;
+    synthesizer->back_buffer = temp_buffer;
+
+    sound_buffer_free(synthesizer->back_buffer);
+
+    bool has_sounds = synthesizer->front_buffer->sound_count > 0;
+
+    mutex_unlock(synthesizer->front_buffer->mutex);
+    mutex_unlock(synthesizer->back_buffer->mutex);
+
+    synthesizer->current_sound_idx = -1;
+
+    return has_sounds;
+}

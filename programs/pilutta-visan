@@ -25,7 +25,6 @@ define section_1 (
 )
 
 define section_2 (
-    start
     Gb play8 D# play16 wait16 B3 play8
     B play16 wait16 play8
     G play8dot F# play16 E play16 wait16

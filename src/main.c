@@ -26,7 +26,20 @@
 #define MIN_NOTE -44
 #define SILENCE (MAX_NOTE + 1)
 
-int main (int argc, char **argv) {
+void compiler_thread(void *data) {
+    State *state = (State *)data;
+    do {
+        while (!can_compile(&state->compiler)) {
+            if (has_flag(state->compiler.flags, COMPILER_FLAG_CANCELLED)) {
+                return;
+            }
+        }
+        compile(state);
+        synthesizer_back_buffer_generate_data(&state->synthesizer, &state->compiler);
+    } while (has_flag(state->compiler.flags, COMPILER_FLAG_IN_PROCESS));
+}
+
+int main(int argc, char **argv) {
     State *state = (State *)calloc(1, sizeof(State));
 
     state->window_width = 1500;
@@ -50,25 +63,20 @@ int main (int argc, char **argv) {
     #endif
 
     InitAudioDevice();
-
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-
     InitWindow(state->window_width, state->window_height, "Concerto Script");
-
     SetExitKey(KEY_NULL);
+    SetTargetFPS(60);
 
     state->font = LoadFont("Consolas.ttf");
 
-    SetTargetFPS(60);
-
-    Synthesizer *synthesizer = NULL;
-    Thread *synth_thread;
-
     char *filename = (argc > 1) ? argv[1] : NULL;
+    editor_load_file(state, filename);
+
+    compiler_init(&state->compiler);
+    synthesizer_init(&state->synthesizer);
 
     bool is_playing = false;
-
-    editor_load_file(state, filename);
 
     while (!WindowShouldClose()) {
         state->keyboard_layout = get_keyboard_layout();
@@ -79,48 +87,57 @@ int main (int argc, char **argv) {
         switch (state->state) {
         default: break;
         case STATE_TRY_COMPILE: {
-            state->compiler_result = compile(state);
-            if (state->compiler_result->error_type != NO_ERROR) {
-                console_set_text(state, state->compiler_result->error_message);
-                compiler_result_free(state);
+            compile(state);
+            if (state->compiler.error_type != NO_ERROR) {
+                console_set_text(state, state->compiler.error_message);
+                compiler_reset(&state->compiler);
                 state->state = STATE_COMPILATION_ERROR;
                 continue;
             }
-            int synthesizer_error;
-            synthesizer = synthesizer_allocate(
-                state->compiler_result->tones,
-                state->compiler_result->tone_amount,
-                &synthesizer_error
-            );
-            if (synthesizer_error) {
-                exit(synthesizer_error);
-            }
-            synth_thread = thread_create(synthesizer_run, synthesizer);
-            if (synth_thread == NULL) {
-                printf("Failed creating thread");
+            synthesizer_back_buffer_generate_data(&state->synthesizer, &state->compiler);
+            synthesizer_swap_sound_buffers(&state->synthesizer);
+            compiler_output_handled(&state->compiler);
+
+            state->compiler.thread = thread_create(compiler_thread, state);
+            if (state->compiler.thread == NULL) {
                 exit(1);
             }
+
             is_playing = true;
             state->state = STATE_WAITING_TO_PLAY;
         } break;
+        case STATE_WAITING_TO_PLAY: {
+            if (state->current_sound != NULL) {
+                state->state = STATE_PLAY;
+                break;
+            }
+        } break;
+        case STATE_PLAY: {
+            if (state->current_sound == NULL) {
+                compiler_output_handled(&state->compiler);
+                bool synthesizer_has_more_sounds = synthesizer_swap_sound_buffers(&state->synthesizer);
+                if (!synthesizer_has_more_sounds) {
+                    state->state = STATE_EDITOR;
+                    synthesizer_reset(&state->synthesizer);
+                    compiler_reset(&state->compiler);
+                    is_playing = false;
+                }
+            }
+        } break;
         case STATE_INTERRUPT: {
             if (is_playing) {
-                state->current_sound = NULL;
-                synthesizer_cancel(synthesizer);
-                thread_join(synth_thread);
-                synthesizer_free(synthesizer);
-                compiler_result_free(state);
+                synthesizer_reset(&state->synthesizer);
+                compiler_reset(&state->compiler);
                 is_playing = false;
             }
-            editor_load_file(state, filename);
             state->state = STATE_EDITOR;
         }
         }
 
-        if (is_playing && (!is_synthesizer_sound_playing(state->current_sound))) {
-            state->current_sound = synthesizer_try_pop(synthesizer);
+        if (is_playing && !is_synthesizer_sound_playing(state->current_sound)) {
+            state->current_sound = synthesizer_front_buffer_try_get_sound(&state->synthesizer);
             if (state->current_sound != NULL) {
-                PlaySound((state->current_sound->sound));
+                PlaySound(state->current_sound->sound);
             }
         }
 
@@ -129,7 +146,6 @@ int main (int argc, char **argv) {
 
         switch (state->state) {
         default: {
-
         } break;
         case STATE_EDITOR: {
             editor_render_state_write(state);
@@ -144,17 +160,9 @@ int main (int argc, char **argv) {
             console_render(state);
         } break;
         case STATE_WAITING_TO_PLAY: {
-            if (state->current_sound != NULL) {
-                state->state = STATE_PLAY;
-                break;
-            }
             editor_render_state_wait_to_play(state);
         } break;
         case STATE_PLAY: {
-            if (state->current_sound == NULL) {
-                state->state = STATE_EDITOR;
-                break;
-            }
             editor_render_state_play(state);
         } break;
         }
@@ -166,7 +174,7 @@ int main (int argc, char **argv) {
     CloseWindow();
     CloseAudioDevice();
 
-    compiler_result_free(state);
+    compiler_free(&state->compiler);
     editor_free(state);
     free(state);
 }

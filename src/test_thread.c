@@ -2,7 +2,7 @@
 #include "windows_wrapper.h"
 
 typedef struct Debug_Thread_Data {
-    u32 number;
+    unsigned long number;
     Mutex mutex;
 } Debug_Thread_Data;
 
@@ -10,7 +10,7 @@ static void random_sleep() {
     sleep(GetRandomValue(1, 100));
 }
 
-static void debug_mutex_function(char *id, Debug_Thread_Data *data, u32 add) {
+static void debug_mutex_function(char *id, Debug_Thread_Data *data, unsigned long add) {
     printf("thread %s attempting to lock mutex\n", id);
     random_sleep();
     mutex_lock(data->mutex);
@@ -43,13 +43,12 @@ void test_thread() {
     data->number = 0;
     data->mutex = mutex_create();
     Thread *debug_thread;
-    u32 debug_thread_id;
+    unsigned long debug_thread_id;
     debug_thread = thread_create(debug_thread_function, data);
     for (int i = 0; i < 10; i += 1) {
         debug_mutex_function("1  ", data, 1);
     }
     thread_join(debug_thread);
     mutex_destroy(data->mutex);
-    thread_destroy(debug_thread);
     free(data);
 }

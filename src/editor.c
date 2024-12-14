@@ -1429,6 +1429,7 @@ static void editor_render_base(State *state, float line_height, float char_width
                             strcmp(current_word, "define") == 0 ||
                             strcmp(current_word, "repeat") == 0 ||
                             strcmp(current_word, "rounds") == 0 ||
+                            strcmp(current_word, "forever") == 0 ||
                             strcmp(current_word, "semi") == 0 ||
                             strcmp(current_word, "bpm") == 0 ||
                             strcmp(current_word, "chord") == 0 ||
@@ -1582,7 +1583,7 @@ void editor_render_state_play(State *state) {
     rec.height = (2 * rec_line_size) + line_height;
 
     Color color = { .g = 0, .a = 255 };
-    if (tone->idx % 2 == 0) {
+    if (tone->token_idx % 2 == 0) {
         color.r = 255;
         color.b = 0;
     } else {

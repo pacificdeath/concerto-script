@@ -2,6 +2,7 @@
 setlocal enabledelayedexpansion
 
 set D="-g -DDEBUG"
+set COMPILE_ONLY=0
 set DEBUG=""
 set GDB=0
 set TEST_THREAD=""
@@ -9,6 +10,8 @@ set TEST_THREAD=""
 for %%x in (%*) do (
     if "%%x"=="help" (
         goto :help
+    ) else if "%%x"=="c" (
+        set COMPILE_ONLY=1
     ) else if "%%x"=="d" (
         set DEBUG=%D%
     ) else if "%%x"=="g" (
@@ -51,6 +54,8 @@ gcc ^
     -o main.exe ^
     -O0 ^
     -Wall ^
+    -Wextra ^
+    -Wconversion ^
     -std=c99 ^
     -L./raylib-5.0_win64_mingw-w64/lib/ ^
     -lraylib ^
@@ -64,7 +69,9 @@ if not %errorlevel% equ 0 (
 )
 
 if %errorlevel% equ 0 (
-    if !GDB!==1 (
+    if !COMPILE_ONLY!==1 (
+        goto :end
+    ) else if !GDB!==1 (
         gdb --args main.exe
     ) else (
         main.exe
@@ -76,6 +83,7 @@ goto :end
     echo %0 ^[Options^]
     echo Options:
     echo    help           this thing
+    echo    c              compile only
     echo    d              enable debug
     echo    g              run gdb after compiliation
     echo    test-thread    test multithreading

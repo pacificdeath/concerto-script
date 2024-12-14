@@ -7,26 +7,18 @@
 
 #include "raylib.h"
 #include "main.h"
+#include "windows_wrapper.h"
 
 #define CHROMATIC_SCALE (~0)
 #define SILENT_CHORD ((Chord){0})
 #define INVALID_CHORD ((Chord){ .size = -1 })
 #define MAX_PAREN_NESTING 32
 
-/*
-    TODO:   handle case when some ridiculous person is trying to generate more tokens
-            or tones than what is allowed by this thing
-*/
-
-static bool has_flag(int flags, int flag) {
-    return (flags & flag) == flag;
-}
-
 static int get_note_flag(int note) {
     return 1 << (note + MAX_NOTE_FROM_C0) % OCTAVE;
 }
 
-static bool peek_token(Compiler_Result *result, int index, int offset, Token **token_ptr) {
+static bool peek_token(Compiler *result, int index, int offset, Token **token_ptr) {
     int actual = index + offset;
     if (actual == 0 || actual >= result->token_amount) {
         return false;
@@ -35,7 +27,7 @@ static bool peek_token(Compiler_Result *result, int index, int offset, Token **t
     return true;
 }
 
-static void populate_error_message(Compiler_Result *result, int line_number, int char_idx) {
+static void populate_error_message(Compiler *result, int line_number, int char_idx) {
     result->error_message[0] = '\0';
     char str_buffer[128];
 
@@ -94,9 +86,6 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
     case ERROR_SCALE_CAN_NOT_BE_EMPTY:
         sprintf(str_buffer, "Scales can not be completely\nempty like that");
         break;
-    case ERROR_INTERNAL:
-        sprintf(str_buffer, "Internal error");
-        break;
     default:
         sprintf(str_buffer, "Unknown error");
         break;
@@ -150,17 +139,17 @@ static void populate_error_message(Compiler_Result *result, int line_number, int
     return;
 }
 
-static void *lexer_error(Compiler_Result *result, Compiler_Error_Type error_type) {
+static void *lexer_error(Compiler *result, Compiler_Error_Type error_type) {
     result->error_type = error_type;
     populate_error_message(result, result->line_number, result->char_idx);
 }
 
-static void *validator_error(Compiler_Result *result, Compiler_Error_Type error_type, int token_idx) {
+static void *validator_error(Compiler *result, Compiler_Error_Type error_type, int token_idx) {
     result->error_type = error_type;
     populate_error_message(result, result->tokens[token_idx].line_number, result->tokens[token_idx].char_index);
 }
 
-static Token *token_add(Compiler_Result *result, Token_Type token_type) {
+static Token *token_add(Compiler *result, Token_Type token_type) {
     int address = result->token_amount;
     Token* token = &(result->tokens[address]);
     token->address = address;
@@ -176,18 +165,6 @@ static float note_to_frequency(int semi_offset) {
 }
 
 static void tone_add(Tone_Add_Data *data) {
-    Tone* tone = &(data->result->tones[data->result->tone_amount]);
-    tone->waveform = data->waveform;
-    tone->idx = data->idx;
-    tone->line_idx = data->token->line_number;
-    tone->char_idx = data->token->char_index;
-    tone->char_count = data->token->value.play_or_wait.char_count;
-    tone->chord = data->chord;
-    for (int i = 0; i < data->chord.size; i++) {
-        tone->chord.frequencies[i] = note_to_frequency(data->chord.notes[i]);
-    }
-    tone->duration = data->token->value.play_or_wait.duration * 240.0f / data->bpm;
-    (data->result->tone_amount)++;
 }
 
 static int char_to_int(char c) {
@@ -226,7 +203,7 @@ static int digit_count (int n) {
     return -1;
 }
 
-static bool try_get_note_token(Compiler_Result *result) {
+static bool try_get_note_token(Compiler *result) {
     char *line = result->data[result->line_number];
     int char_idx = result->char_idx;
 
@@ -287,7 +264,7 @@ static bool try_get_note_token(Compiler_Result *result) {
     return true;
 }
 
-static bool try_get_play_or_wait_token(Compiler_Result *result) {
+static bool try_get_play_or_wait_token(Compiler *result) {
     char *line = result->data[result->line_number];
     int char_idx = result->char_idx;
 
@@ -476,13 +453,11 @@ static Chord parse_optional_scale_offset(Optional_Scale_Offset_Data *data) {
     return new_chord;
 }
 
-static void run_lexer(Compiler_Result *result) {
+static void run_lexer(Compiler *result) {
     result->token_amount = 0;
     result->tokens = (Token *)malloc(sizeof(Token) * 4096);
     if (result->tokens == NULL) {
-        printf("malloc failed for tokens\n");
-        result->error_type = ERROR_INTERNAL;
-        return;
+        thread_error();
     }
 
     int paren_nest_level = 0;
@@ -583,11 +558,16 @@ static void run_lexer(Compiler_Result *result) {
                     token_add(result, TOKEN_REPEAT);
                 } else if (strcmp("rounds", ident) == 0) {
                     token_add(result, TOKEN_ROUNDS);
+                } else if (strcmp("forever", ident) == 0) {
+                    token_add(result, TOKEN_FOREVER);
                 } else if (strcmp("define", ident) == 0) {
                     token_add(result, TOKEN_DEFINE);
                 } else {
                     Token *token = token_add(result, TOKEN_IDENTIFIER);
                     token->value.string = (char *)malloc(sizeof(char) * (ident_length + 1));
+                    if (token->value.string == NULL) {
+                        thread_error();
+                    }
                     strcpy(token->value.string, ident);
                 }
                 *i += (ident_length - 1);
@@ -597,7 +577,7 @@ static void run_lexer(Compiler_Result *result) {
     }
 }
 
-static void run_validator(Compiler_Result *result) {
+static void run_validator(Compiler *result) {
     Token* tokens = result->tokens;
 
     for (int i = 0; i < result->token_amount; i += 1) {
@@ -695,6 +675,13 @@ static void run_validator(Compiler_Result *result) {
             }
             i++;
         } break;
+        case TOKEN_FOREVER: {
+            if (!peek_token(result, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
+                validator_error(result, ERROR_EXPECTED_PAREN_OPEN, i);
+                return;
+            }
+            i++;
+        } break;
         case TOKEN_ROUNDS: {
             int amount;
             for (
@@ -758,131 +745,116 @@ static void run_validator(Compiler_Result *result) {
     }
 }
 
-static void run_parser(Compiler_Result *result) {
-    Token* tokens = result->tokens;
+static void run_parser(Compiler *compiler) {
+    Parser *parser = &compiler->parser;
+    Token* tokens = compiler->tokens;
 
-    for (int i = 0; i < result->token_amount; i += 1) {
-        switch (result->tokens[i].type) {
-        case TOKEN_PAREN_OPEN:
-            if (result->tokens[i].value.int_number < 0) {
-                validator_error(result, ERROR_NO_MATCHING_CLOSING_PAREN, i);
-                return;
-            }
-            break;
-        default:
-            break;
+    compiler->tone_amount = 0;
+
+    if (!has_flag(compiler->flags, COMPILER_FLAG_IN_PROCESS)) {
+        compiler->flags |= COMPILER_FLAG_IN_PROCESS;
+
+        parser->token_idx = 0;
+        parser->nest_idx = -1;
+        for (int i = 0; i < 16; i++) {
+            parser->nest_repetitions[i].target = -1;
+            parser->nest_repetitions[i].round = 0;
         }
-    }
-
-    result->tone_amount = 0;
-    result->tones = NULL;
-
-    result->tones = (Tone *)malloc(sizeof(Tone) * 4096);
-    if (result->tones == NULL) {
-        printf("malloc failed for tones\n");
-        result->error_type = ERROR_INTERNAL;
-        result;
-        return;
+        parser->current_bpm = 125;
+        parser->current_waveform = WAVEFORM_SINE;
+        parser->token_ptr_return_idx = 0;
+        parser->current_chord = SILENT_CHORD;
+        parser->current_chord.size = 1;
+        parser->current_scale = ~0;
     }
 
     uint32_t tone_idx = 0;
-
-    int nest_idx = -1;
-    Repetition nest_repetitions[16];
-    for (int i = 0; i < 16; i++) {
-        nest_repetitions[i].target = -1;
-        nest_repetitions[i].round = 0;
-    }
-
-    int bpm = 125;
-    Waveform current_waveform = WAVEFORM_SINE;
-    int i_return_positions[32];
-    int i_return_idx = 0;
-
-    Chord chord = {0};
-    chord.size = 1;
-
-    int scale = ~0;
-    Token *peek_token_ptr;
     bool semi_flag = false;
 
-    for (int i = 0; i < result->token_amount; i++) {
+    for (int i = parser->token_idx; i < compiler->token_amount; i++) {
         switch (tokens[i].type) {
+        case TOKEN_PLAY:
+        case TOKEN_WAIT: {
+            Tone* tone = &compiler->tones[compiler->tone_amount];
+            tone->waveform = tokens[i].type == TOKEN_PLAY
+                ? parser->current_waveform
+                : WAVEFORM_NONE;
+            tone->token_idx = tone_idx++;
+            tone->line_idx = tokens[i].line_number;
+            tone->char_idx = tokens[i].char_index;
+            tone->char_count = tokens[i].value.play_or_wait.char_count;
+            tone->chord = tokens[i].type == TOKEN_PLAY
+                ? parser->current_chord
+                : INVALID_CHORD;
+            for (int i = 0; i < parser->current_chord.size; i++) {
+                tone->chord.frequencies[i] = note_to_frequency(parser->current_chord.notes[i]);
+            }
+            tone->duration = tokens[i].value.play_or_wait.duration * 240.0f / parser->current_bpm;
+            compiler->tone_amount++;
+            if (compiler->tone_amount == SYNTHESIZER_TONE_CAPACITY) {
+                compiler->flags |= COMPILER_FLAG_OUTPUT_AVAILABLE;
+                parser->token_idx = (i + 1);
+                if (compiler->parser.token_idx == (compiler->token_amount - 1)) {
+                    compiler->flags &= ~COMPILER_FLAG_IN_PROCESS;
+                    return;
+                }
+                return;
+            }
+        } break;
         case TOKEN_START: {
             int old_idx = tone_idx + 1;
             int new_idx = 0;
-            while (old_idx < result->tone_amount) {
-                result->tones[new_idx] = result->tones[old_idx];
+            while (old_idx < compiler->tone_amount) {
+                compiler->tones[new_idx] = compiler->tones[old_idx];
                 old_idx++;
                 new_idx++;
             }
-            result->tone_amount = new_idx;
+            compiler->tone_amount = new_idx;
         } break;
-        case TOKEN_SINE:        { current_waveform = WAVEFORM_SINE; } break;
-        case TOKEN_TRIANGLE:    { current_waveform = WAVEFORM_TRIANGLE; } break;
-        case TOKEN_SQUARE:      { current_waveform = WAVEFORM_SQUARE; } break;
-        case TOKEN_SAWTOOTH:    { current_waveform = WAVEFORM_SAWTOOTH; } break;
+        case TOKEN_SINE:        { parser->current_waveform = WAVEFORM_SINE; } break;
+        case TOKEN_TRIANGLE:    { parser->current_waveform = WAVEFORM_TRIANGLE; } break;
+        case TOKEN_SQUARE:      { parser->current_waveform = WAVEFORM_SQUARE; } break;
+        case TOKEN_SAWTOOTH:    { parser->current_waveform = WAVEFORM_SAWTOOTH; } break;
         case TOKEN_SEMI: {
             semi_flag = true;
         } break;
         case TOKEN_BPM: {
             i += 1;
-            bpm = tokens[i].value.int_number;
-        } break;
-        case TOKEN_PLAY: {
-            Tone_Add_Data tone_add_data = {
-                .result = result,
-                .token = &tokens[i],
-                .idx = tone_idx++,
-                .chord = chord,
-                .bpm = bpm,
-                .waveform = current_waveform,
-            };
-            tone_add(&tone_add_data);
-        } break;
-        case TOKEN_WAIT: {
-            Tone_Add_Data tone_add_data = {
-                .result = result,
-                .token = &tokens[i],
-                .idx = tone_idx++,
-                .chord = 0,
-                .bpm = bpm,
-                .waveform = -1,
-            };
-            tone_add(&tone_add_data);
+            parser->current_bpm = tokens[i].value.int_number;
         } break;
         case TOKEN_NOTE: {
-            chord.size = 1;
-            chord.notes[0] = tokens[i].value.int_number;
+            parser->current_chord.size = 1;
+            parser->current_chord.notes[0] = tokens[i].value.int_number;
         } break;
         case TOKEN_RISE:
         case TOKEN_FALL: {
             Optional_Scale_Offset_Data data = {
-                .result = result,
+                .result = compiler,
                 .token_idx = &i,
-                .chord = chord,
-                .scale = semi_flag ? CHROMATIC_SCALE : scale,
+                .chord = parser->current_chord,
+                .scale = semi_flag ? CHROMATIC_SCALE : parser->current_scale,
                 .direction = (tokens[i].type == TOKEN_RISE) ? DIRECTION_RISE : DIRECTION_FALL,
             };
             semi_flag = false;
-            chord = parse_optional_scale_offset(&data);
+            parser->current_chord = parse_optional_scale_offset(&data);
         } break;
         case TOKEN_CHORD: {
             i += 2;
-            Compiler_Error_Type chord_error = NO_ERROR;
-            chord = get_chord(result->token_amount, tokens, &i, &chord_error);
+            parser->current_chord = get_chord(compiler->token_amount, tokens, &i, NULL);
         } break;
         case TOKEN_SCALE: {
             i += 2;
-            Compiler_Error_Type scale_error = NO_ERROR;
-            scale = get_scale(result->token_amount, tokens, &i, &scale_error);
+            parser->current_scale = get_scale(compiler->token_amount, tokens, &i, NULL);
         } break;
         case TOKEN_REPEAT: {
             i++;
             int repeat_amount = tokens[i].value.int_number;
-            nest_idx += 1;
-            nest_repetitions[nest_idx].target = repeat_amount;
-            nest_repetitions[nest_idx].round = 0;
+            parser->nest_idx += 1;
+            parser->nest_repetitions[parser->nest_idx].target = repeat_amount;
+            parser->nest_repetitions[parser->nest_idx].round = 0;
+            i++;
+        } break;
+        case TOKEN_FOREVER: {
             i++;
         } break;
         case TOKEN_ROUNDS: {
@@ -895,7 +867,7 @@ static void run_parser(Compiler_Result *result) {
             i++;
             bool special_round = false;
             for (int j = 0; j < amount; j++) {
-                if ((rounds[j] - 1) == nest_repetitions[nest_idx].round) {
+                if ((rounds[j] - 1) == parser->nest_repetitions[parser->nest_idx].round) {
                     special_round = true;
                     break;
                 }
@@ -911,11 +883,11 @@ static void run_parser(Compiler_Result *result) {
             i = paren_close_address;
         } break;
         case TOKEN_IDENTIFIER: {
-            for (int j = 0; j < result->variable_count; j++) {
-                if (strcmp(tokens[i].value.string, result->variables[j].ident) == 0) {
-                    i_return_positions[i_return_idx] = i;
-                    i_return_idx += 1;
-                    i = result->variables[j].address;
+            for (int j = 0; j < compiler->variable_count; j++) {
+                if (strcmp(tokens[i].value.string, compiler->variables[j].ident) == 0) {
+                    parser->token_ptr_return_positions[parser->token_ptr_return_idx] = i;
+                    parser->token_ptr_return_idx += 1;
+                    i = compiler->variables[j].address;
                     break;
                 }
             }
@@ -925,111 +897,130 @@ static void run_parser(Compiler_Result *result) {
             if (paren_return_address <= 1) {
                 break;
             }
-            Token_Type parent_token_type = tokens[paren_return_address - 2].type;
-            switch (parent_token_type) {
-            case TOKEN_REPEAT: {
-                nest_repetitions[nest_idx].round++;
-                if (nest_repetitions[nest_idx].round < nest_repetitions[nest_idx].target) {
+            if (TOKEN_REPEAT == tokens[paren_return_address - 2].type) {
+                Repetition *rep = &parser->nest_repetitions[parser->nest_idx];
+                rep->round++;
+                if (rep->round < rep->target) {
                     int paren_open_idx = tokens[i].value.int_number;
                     i = paren_open_idx;
                 } else {
-                    nest_repetitions[nest_idx].target = -1;
-                    nest_repetitions[nest_idx].round = 0;
-                    nest_idx -= 1;
+                    rep->target = -1;
+                    rep->round = 0;
+                    parser->nest_idx -= 1;
                 }
-            } break;
-            case TOKEN_DEFINE: {
-                i_return_idx--;
-                i = i_return_positions[i_return_idx];
-            } break;
-            default: {
-                break;
-            }
+            } else if (TOKEN_FOREVER == tokens[paren_return_address - 1].type) {
+                i = paren_return_address;
+            } else if (TOKEN_DEFINE == tokens[paren_return_address - 2].type) {
+                parser->token_ptr_return_idx--;
+                i = parser->token_ptr_return_positions[parser->token_ptr_return_idx];
             }
         } break;
         }
     }
 
-    if (result->tone_amount == 0) {
-        result->error_type = ERROR_NO_SOUND;
-        sprintf(result->error_message, "This produces no sound or silence");
-        return;
-    }
+    parser->token_idx = (compiler->token_amount - 1);
+    compiler->flags &= ~COMPILER_FLAG_IN_PROCESS;
 }
 
-Compiler_Result *compile(State *state) {
-    Compiler_Result *result = (Compiler_Result *)malloc(sizeof(Compiler_Result));
-
-    if (result == NULL) {
-        printf("malloc failed for compiler\n");
-        result->error_type = ERROR_INTERNAL;
-        return result;
-    }
-
-    result->data_len = state->editor.line_count;
-    result->data = (char**)malloc(sizeof(char *) * state->editor.line_count);
-
-    if (result->data == NULL) {
-        printf("malloc failed for data\n");
-        result->error_type = ERROR_INTERNAL;
-        return result;
-    }
-
-    for (int i = 0; i < result->data_len; i++) {
-        result->data[i] = state->editor.lines[i];
-    }
-
-    result->tokens = NULL;
-    result->tones = NULL;
-    result->line_number = -1;
-    result->char_idx = 0;
-    result->error_type = NO_ERROR;
-
-    run_lexer(result);
-    if (result->error_type != NO_ERROR) {
-        return result;
-    }
-
-    run_validator(result);
-    if (result->error_type != NO_ERROR) {
-        return result;
-    }
-
-    run_parser(result);
-    if (result->error_type != NO_ERROR) {
-        return result;
-    }
-
-    return result;
+void compiler_init(Compiler *compiler) {
+    compiler->mutex = mutex_create();
 }
 
-void compiler_result_free(State *state) {
-    Compiler_Result *cr = state->compiler_result;
-    if (cr == NULL) {
+void compiler_output_handled(Compiler *compiler) {
+    mutex_lock(compiler->mutex);
+        compiler->flags |= COMPILER_FLAG_OUTPUT_HANDLED;
+    mutex_unlock(compiler->mutex);
+}
+
+void compiler_reset(Compiler *compiler) {
+    mutex_lock(compiler->mutex);
+        compiler->flags |= COMPILER_FLAG_CANCELLED;
+        for (int i = 0; i < compiler->token_amount; i += 1) {
+            switch (compiler->tokens[i].type) {
+            case TOKEN_IDENTIFIER:
+                free(compiler->tokens[i].value.string);
+                compiler->tokens[i].value.string = NULL;
+                break;
+            default:
+                break;
+            }
+        }
+        if (compiler->data != NULL) {
+            free(compiler->data);
+            compiler->data = NULL;
+        }
+        if (compiler->tokens != NULL) {
+            free(compiler->tokens);
+            compiler->tokens = NULL;
+        }
+        *compiler = (Compiler){0};
+    mutex_unlock(compiler->mutex);
+}
+
+bool can_compile(Compiler *compiler) {
+    bool x = true;
+    mutex_lock(compiler->mutex);
+        if (has_flag(compiler->flags, COMPILER_FLAG_OUTPUT_AVAILABLE)) {
+            if (has_flag(compiler->flags, COMPILER_FLAG_OUTPUT_HANDLED)) {
+                compiler->flags &= ~(COMPILER_FLAG_OUTPUT_AVAILABLE | COMPILER_FLAG_OUTPUT_HANDLED);
+            } else {
+                x = false;
+            }
+        }
+    mutex_unlock(compiler->mutex);
+    return x;
+}
+
+void compile(State *state) {
+    Compiler *compiler = &state->compiler;
+
+    if (compiler->parser.token_idx == compiler->token_amount - 1) {
+        compiler->flags &= ~COMPILER_FLAG_IN_PROCESS;
         return;
     }
-    for (int i = 0; i < cr->token_amount; i += 1) {
-        switch (cr->tokens[i].type) {
-        case TOKEN_IDENTIFIER:
-            free(cr->tokens[i].value.string);
-            cr->tokens[i].value.string = NULL;
-            break;
-        default:
-            break;
+
+    mutex_lock(compiler->mutex);
+
+    if (!has_flag(compiler->flags, COMPILER_FLAG_IN_PROCESS)) {
+        compiler->data_len = state->editor.line_count;
+        compiler->data = (char**)malloc(sizeof(char *) * state->editor.line_count);
+        if (compiler->data == NULL) {
+            thread_error();
+        }
+
+        for (int i = 0; i < compiler->data_len; i++) {
+            compiler->data[i] = state->editor.lines[i];
+        }
+
+        compiler->tokens = NULL;
+        compiler->line_number = -1;
+        compiler->char_idx = 0;
+        compiler->error_type = NO_ERROR;
+
+        run_lexer(compiler);
+        if (compiler->error_type != NO_ERROR) {
+            goto compile_end;
+        }
+
+        run_validator(compiler);
+        if (compiler->error_type != NO_ERROR) {
+            goto compile_end;
         }
     }
-    if (cr->data != NULL) {
-        free(cr->data);
-        cr->data = NULL;
+
+    run_parser(compiler);
+
+    if (compiler->tone_amount == 0) {
+        compiler->error_type = ERROR_NO_SOUND;
+        sprintf(compiler->error_message, "This produces no sound or silence");
+        goto compile_end;
     }
-    if (cr->tokens != NULL) {
-        free(cr->tokens);
-        cr->tokens = NULL;
-    }
-    if (cr->tones != NULL) {
-        free(cr->tones);
-        cr->tones = NULL;
-    }
-    free(cr);
-    state->compiler_result = NULL;
+
+    compile_end:
+    mutex_unlock(compiler->mutex);
+}
+
+void compiler_free(Compiler *compiler) {
+    compiler_reset(compiler);
+    mutex_destroy(compiler->mutex);
 }

@@ -55,6 +55,7 @@
 #define VARIABLE_MAX_COUNT 255
 
 #define SYNTHESIZER_FADE_FRAMES 500
+#define SYNTHESIZER_TONE_CAPACITY 8
 
 typedef enum Waveform {
     WAVEFORM_NONE,
@@ -76,7 +77,7 @@ bool is_chord_silent(Chord *chord) {
 
 typedef struct Tone {
     Waveform waveform;
-    uint32_t idx;
+    uint32_t token_idx;
     uint16_t line_idx;
     uint16_t char_idx;
     uint16_t char_count;
@@ -194,6 +195,7 @@ typedef enum Token_Type {
     TOKEN_SCALE,
     TOKEN_REPEAT,
     TOKEN_ROUNDS,
+    TOKEN_FOREVER,
     TOKEN_DEFINE,
 } Token_Type;
 
@@ -224,6 +226,14 @@ typedef struct Repetition {
     int round;
 } Repetition;
 
+typedef enum Compiler_Flags {
+    COMPILER_FLAG_NONE = 0,
+    COMPILER_FLAG_CANCELLED = 1 << 0,
+    COMPILER_FLAG_IN_PROCESS = 1 << 1,
+    COMPILER_FLAG_OUTPUT_AVAILABLE = 1 << 2,
+    COMPILER_FLAG_OUTPUT_HANDLED = 1 << 3,
+} Compiler_Flags;
+
 typedef enum Compiler_Error_Type {
     NO_ERROR = 0,
     ERROR_NO_SOUND,
@@ -244,11 +254,24 @@ typedef enum Compiler_Error_Type {
     ERROR_CHORD_TOO_MANY_NOTES,
     ERROR_SCALE_CAN_ONLY_CONTAIN_NOTES,
     ERROR_SCALE_CAN_NOT_BE_EMPTY,
-    ERROR_INTERNAL,
 } Compiler_Error_Type;
 
-typedef struct Compiler_Result {
+typedef struct Parser {
+    int token_idx;
+    int nest_idx;
+    Repetition nest_repetitions[16];
+    int current_bpm;
+    Waveform current_waveform;
+    int token_ptr_return_positions[32];
+    int token_ptr_return_idx;
+    Chord current_chord;
+    int current_scale;
+} Parser;
+
+typedef struct Compiler {
+    Compiler_Flags flags;
     Compiler_Error_Type error_type;
+    Parser parser;
     char error_message[256];
     char **data;
     int data_len;
@@ -257,10 +280,12 @@ typedef struct Compiler_Result {
     int token_amount;
     Token *tokens;
     int tone_amount;
-    Tone *tones;
+    Tone tones[SYNTHESIZER_TONE_CAPACITY];
     Token_Variable variables[VARIABLE_MAX_COUNT];
     int variable_count;
-} Compiler_Result;
+    Thread thread;
+    Mutex mutex;
+} Compiler;
 
 typedef enum Note_Direction {
     DIRECTION_RISE = 1,
@@ -268,7 +293,7 @@ typedef enum Note_Direction {
 } Note_Direction;
 
 typedef struct Optional_Scale_Offset_Data {
-    Compiler_Result *result;
+    Compiler *result;
     int *token_idx;
     Chord chord;
     uint16_t scale;
@@ -276,7 +301,7 @@ typedef struct Optional_Scale_Offset_Data {
 } Optional_Scale_Offset_Data;
 
 typedef struct Tone_Add_Data {
-    Compiler_Result *result;
+    Compiler *compiler;
     Token *token;
     uint32_t idx;
     Chord chord;
@@ -290,13 +315,25 @@ typedef struct Synthesizer_Sound {
     Sound sound;
 } Synthesizer_Sound;
 
-typedef struct Synthesizer {
-    int sound_capacity;
-    Synthesizer_Sound *sounds;
-    int current_sound_idx;
+typedef enum Synthesizer_Flags {
+    SYNTHESIZER_FLAG_NONE = 0,
+    SYNTHESIZER_FLAG_SHOULD_CANCEL = 1 << 0,
+    SYNTHESIZER_FLAG_SOUND_BUFFER_SWAP_REQUIRED = 1 << 1,
+    SYNTHESIZER_FLAG_COMPLETED = 1 << 2,
+} Synthesizer_Flags;
+
+typedef struct Sound_Buffer {
+    Synthesizer_Sound sounds[SYNTHESIZER_TONE_CAPACITY];
     int sound_count;
     Mutex mutex;
-    bool should_cancel;
+} Sound_Buffer;
+
+typedef struct Synthesizer {
+    Synthesizer_Flags flags;
+    int current_sound_idx;
+    Sound_Buffer buffers[2];
+    Sound_Buffer *front_buffer;
+    Sound_Buffer *back_buffer;
 } Synthesizer;
 
 typedef struct State {
@@ -314,6 +351,10 @@ typedef struct State {
         STATE_INTERRUPT,
     } state;
 
+    enum {
+        FLAG_NONE = 0,
+    } flags;
+
     Keyboard_Layout keyboard_layout;
 
     int window_width;
@@ -329,7 +370,9 @@ typedef struct State {
     int console_line_count;
     int console_highlight_idx;
 
-    Compiler_Result *compiler_result;
+    Compiler compiler;
+
+    Synthesizer synthesizer;
     Synthesizer_Sound *current_sound;
 } State;
 
@@ -346,6 +389,10 @@ int editor_char_width(int line_height) {
 
 int is_valid_in_identifier (char c) {
     return isalpha(c) || isdigit(c) || c == '_';
+}
+
+bool has_flag(int flags, int flag) {
+    return (flags & flag) == flag;
 }
 
 #endif
