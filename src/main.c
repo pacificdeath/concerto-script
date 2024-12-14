@@ -98,9 +98,11 @@ int main(int argc, char **argv) {
             synthesizer_swap_sound_buffers(&state->synthesizer);
             compiler_output_handled(&state->compiler);
 
-            state->compiler.thread = thread_create(compiler_thread, state);
-            if (state->compiler.thread == NULL) {
-                exit(1);
+            if (has_flag(state->compiler.flags, COMPILER_FLAG_IN_PROCESS)) {
+                state->compiler.thread = thread_create(compiler_thread, state);
+                if (state->compiler.thread == NULL) {
+                    exit(1);
+                }
             }
 
             is_playing = true;

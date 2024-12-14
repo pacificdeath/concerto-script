@@ -793,11 +793,7 @@ static void run_parser(Compiler *compiler) {
             compiler->tone_amount++;
             if (compiler->tone_amount == SYNTHESIZER_TONE_CAPACITY) {
                 compiler->flags |= COMPILER_FLAG_OUTPUT_AVAILABLE;
-                parser->token_idx = (i + 1);
-                if (compiler->parser.token_idx == (compiler->token_amount - 1)) {
-                    compiler->flags &= ~COMPILER_FLAG_IN_PROCESS;
-                    return;
-                }
+                compiler->parser.token_idx = (i + 1);
                 return;
             }
         } break;
@@ -894,7 +890,7 @@ static void run_parser(Compiler *compiler) {
         } break;
         case TOKEN_PAREN_CLOSE: {
             int paren_return_address = tokens[i].value.int_number;
-            if (paren_return_address <= 1) {
+            if (paren_return_address < 1) {
                 break;
             }
             if (TOKEN_REPEAT == tokens[paren_return_address - 2].type) {
@@ -918,7 +914,6 @@ static void run_parser(Compiler *compiler) {
         }
     }
 
-    parser->token_idx = (compiler->token_amount - 1);
     compiler->flags &= ~COMPILER_FLAG_IN_PROCESS;
 }
 
@@ -973,11 +968,6 @@ bool can_compile(Compiler *compiler) {
 
 void compile(State *state) {
     Compiler *compiler = &state->compiler;
-
-    if (compiler->parser.token_idx == compiler->token_amount - 1) {
-        compiler->flags &= ~COMPILER_FLAG_IN_PROCESS;
-        return;
-    }
 
     mutex_lock(compiler->mutex);
 
