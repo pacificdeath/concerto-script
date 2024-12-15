@@ -42,14 +42,14 @@ static Compiler_Error_Address validator_run(Compiler *c) {
         } break;
         case TOKEN_SEMI: {
             if (!peek_token(c, i, 1, &peek_token_ptr)) {
-                validator_error(ERROR_INVALID_SEMI, i);
+                return validator_error(ERROR_INVALID_SEMI, i);
             }
             switch (peek_token_ptr->type) {
             case TOKEN_RISE:
             case TOKEN_FALL:
                 break;
             default:
-                validator_error(ERROR_INVALID_SEMI, i);
+                return validator_error(ERROR_INVALID_SEMI, i);
             }
         } break;
         case TOKEN_RISE:
@@ -61,44 +61,44 @@ static Compiler_Error_Address validator_run(Compiler *c) {
         case TOKEN_BPM: {
             i += 1;
             if (i >= c->token_amount || tokens[i].type != TOKEN_NUMBER) {
-                validator_error(ERROR_EXPECTED_NUMBER, i);
+                return validator_error(ERROR_EXPECTED_NUMBER, i);
             }
         } break;
         case TOKEN_CHORD: {
             if (!peek_token(c, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
+                return validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
             }
             i += 2;
             Compiler_Error chord_error = NO_ERROR;
             Chord chord = get_chord(c->token_amount, tokens, &i, &chord_error);
             if (chord_error != NO_ERROR) {
-                validator_error(chord_error, i);
+                return validator_error(chord_error, i);
             }
         } break;
         case TOKEN_SCALE: {
             if (!peek_token(c, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
+                return validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
             }
             i += 2;
             Compiler_Error scale_error = NO_ERROR;
             int scale = get_scale(c->token_amount, tokens, &i, &scale_error);
             if (scale_error != NO_ERROR) {
-                validator_error(scale_error, i);
+                return validator_error(scale_error, i);
             }
         } break;
         case TOKEN_REPEAT: {
             if (!peek_token(c, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_NUMBER) {
-                validator_error(ERROR_EXPECTED_NUMBER, i);
+                return validator_error(ERROR_EXPECTED_NUMBER, i);
             }
             i++;
             if (!peek_token(c, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
+                return validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
             }
             i++;
         } break;
         case TOKEN_FOREVER: {
             if (!peek_token(c, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
+                return validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
             }
             i++;
         } break;
@@ -110,31 +110,31 @@ static Compiler_Error_Address validator_run(Compiler *c) {
                 amount++
             );
             if (amount == 0) {
-                validator_error(ERROR_EXPECTED_NUMBER, i);
+                return validator_error(ERROR_EXPECTED_NUMBER, i);
             }
             tokens[i].value.int_number = amount;
             i += amount;
             if (!peek_token(c, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
+                return validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
             }
             i++;
         } break;
         case TOKEN_DEFINE: {
             if (!peek_token(c, i, 1 , &peek_token_ptr) || peek_token_ptr->type != TOKEN_IDENTIFIER) {
-                validator_error(ERROR_EXPECTED_IDENTIFIER, i);
+                return validator_error(ERROR_EXPECTED_IDENTIFIER, i);
             }
             i++;
             bool new_variable = true;
             int variable_idx = c->variable_count;
             for (int j = 0; j < c->variable_count; j++) {
                 if (strcmp(tokens[i].value.string, c->variables[j].ident) == 0) {
-                    validator_error(ERROR_MULTIPLE_DEFINITIONS, i);
+                    return validator_error(ERROR_MULTIPLE_DEFINITIONS, i);
                 }
             }
             c->variables[variable_idx].ident = tokens[i].value.string;
             c->variable_count++;
             if (!peek_token(c, i, 1, &peek_token_ptr) || peek_token_ptr->type != TOKEN_PAREN_OPEN) {
-                validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
+                return validator_error(ERROR_EXPECTED_PAREN_OPEN, i);
             }
             i++;
             c->variables[variable_idx].address = tokens[i].address;
@@ -148,12 +148,14 @@ static Compiler_Error_Address validator_run(Compiler *c) {
                 }
             }
             if (!known_identifier) {
-                validator_error(ERROR_UNKNOWN_IDENTIFIER, i);
+                return validator_error(ERROR_UNKNOWN_IDENTIFIER, i);
             }
         } break;
         default: {
-            validator_error(ERROR_SYNTAX_ERROR, i);
+            return validator_error(ERROR_SYNTAX_ERROR, i);
         } break;
         }
     }
+
+    return (Compiler_Error_Address){0};
 }

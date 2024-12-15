@@ -112,11 +112,9 @@ static void populate_error_message(Compiler *result, int line_number, int char_i
     return;
 }
 
-static Compiler_Error handle_no_sound_error(Compiler *c) {
+static void handle_no_sound_error(Compiler *c) {
     if (c->tone_amount == 0) {
         c->error_type = ERROR_NO_SOUND;
         sprintf(c->error_message, "This produces no sound or silence");
-        return ERROR_NO_SOUND;
     }
-    return NO_ERROR;
 }

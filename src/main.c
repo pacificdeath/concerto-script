@@ -10,8 +10,7 @@
 #include "main.h"
 #include "windows_wrapper.h"
 #include "compiler/compiler.h"
-#include "console.c"
-#include "editor.c"
+#include "editor/editor.h"
 #include "synthesizer.c"
 
 #ifdef TEST_THREAD
@@ -45,10 +44,6 @@ int main(int argc, char **argv) {
     state->window_width = 1500;
     state->window_height = 1000;
 
-    state->console_highlight_idx = -1;
-
-    editor_init(state);
-
     SetTraceLogLevel(
         #ifdef DEBUG
             LOG_DEBUG
@@ -68,10 +63,8 @@ int main(int argc, char **argv) {
     SetExitKey(KEY_NULL);
     SetTargetFPS(60);
 
-    state->font = LoadFont("Consolas.ttf");
-
     char *filename = (argc > 1) ? argv[1] : NULL;
-    editor_load_file(state, filename);
+    editor_init(state, filename);
 
     compiler_init(&state->compiler);
     synthesizer_init(&state->synthesizer);
@@ -81,15 +74,14 @@ int main(int argc, char **argv) {
     while (!WindowShouldClose()) {
         state->keyboard_layout = get_keyboard_layout();
         state->delta_time = GetFrameTime();
-
-        editor_input(state);
+        state->state = editor_input(state);
 
         switch (state->state) {
         default: break;
         case STATE_TRY_COMPILE: {
             compiler_start(&state->compiler, state->editor.line_count, state->editor.lines);
             if (state->compiler.error_type != NO_ERROR) {
-                console_set_text(state, state->compiler.error_message);
+                editor_error_display(state, state->compiler.error_message);
                 compiler_reset(&state->compiler);
                 state->state = STATE_COMPILATION_ERROR;
                 continue;
@@ -144,35 +136,11 @@ int main(int argc, char **argv) {
         }
 
         BeginDrawing();
-        ClearBackground(EDITOR_BG_COLOR);
-
-        switch (state->state) {
-        default: {
-        } break;
-        case STATE_EDITOR: {
-            editor_render_state_write(state);
-        } break;
-        case STATE_EDITOR_SAVE_FILE:
-        case STATE_EDITOR_SAVE_FILE_ERROR:
-        case STATE_EDITOR_FILE_EXPLORER:
-        case STATE_EDITOR_FIND_TEXT:
-        case STATE_EDITOR_GO_TO_LINE:
-        case STATE_COMPILATION_ERROR: {
-            editor_render_state_write(state);
-            console_render(state);
-        } break;
-        case STATE_WAITING_TO_PLAY: {
-            editor_render_state_wait_to_play(state);
-        } break;
-        case STATE_PLAY: {
-            editor_render_state_play(state);
-        } break;
-        }
-
+            ClearBackground(EDITOR_BG_COLOR);
+            editor_render(state);
         EndDrawing();
     }
 
-    UnloadFont(state->font);
     CloseWindow();
     CloseAudioDevice();
 

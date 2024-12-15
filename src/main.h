@@ -105,6 +105,8 @@ typedef struct Editor_Action {
 } Editor_Action;
 
 typedef struct Editor {
+    Font font;
+
     char current_file[EDITOR_FILENAME_MAX_LENGTH];
 
     int line_count;
@@ -141,6 +143,10 @@ typedef struct Editor {
     int undo_buffer_end;
     Editor_Action undo_buffer[EDITOR_UNDO_BUFFER_MAX];
     int undo_buffer_size;
+
+    char console_text[CONSOLE_LINE_CAPACITY][CONSOLE_LINE_MAX_LENGTH];
+    int console_line_count;
+    int console_highlight_idx;
 } Editor;
 
 typedef struct Editor_Selection_Data {
@@ -315,38 +321,28 @@ typedef struct Synthesizer {
     Sound_Buffer *back_buffer;
 } Synthesizer;
 
+typedef enum Big_State {
+    STATE_EDITOR,
+    STATE_EDITOR_SAVE_FILE,
+    STATE_EDITOR_SAVE_FILE_ERROR,
+    STATE_EDITOR_FILE_EXPLORER,
+    STATE_EDITOR_FIND_TEXT,
+    STATE_EDITOR_GO_TO_LINE,
+    STATE_TRY_COMPILE,
+    STATE_COMPILATION_ERROR,
+    STATE_WAITING_TO_PLAY,
+    STATE_PLAY,
+    STATE_INTERRUPT,
+} Big_State;
+
 typedef struct State {
-    enum {
-        STATE_EDITOR,
-        STATE_EDITOR_SAVE_FILE,
-        STATE_EDITOR_SAVE_FILE_ERROR,
-        STATE_EDITOR_FILE_EXPLORER,
-        STATE_EDITOR_FIND_TEXT,
-        STATE_EDITOR_GO_TO_LINE,
-        STATE_TRY_COMPILE,
-        STATE_COMPILATION_ERROR,
-        STATE_WAITING_TO_PLAY,
-        STATE_PLAY,
-        STATE_INTERRUPT,
-    } state;
-
-    Keyboard_Layout keyboard_layout;
-
     int window_width;
     int window_height;
-
-    Font font;
-
+    Keyboard_Layout keyboard_layout;
+    Big_State state;
     float delta_time;
-
     Editor editor;
-
-    char console_text[CONSOLE_LINE_CAPACITY][CONSOLE_LINE_MAX_LENGTH];
-    int console_line_count;
-    int console_highlight_idx;
-
     Compiler compiler;
-
     Synthesizer synthesizer;
     Synthesizer_Sound *current_sound;
 } State;

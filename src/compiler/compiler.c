@@ -8,7 +8,7 @@
 #include "../main.h"
 #include "../windows_wrapper.h"
 
-#include "compiler_error.c"
+#include "error.c"
 #include "lexer.c"
 #include "validator.c"
 #include "parser.c"
@@ -37,24 +37,24 @@ void compiler_start(Compiler *c, int data_len, char data[EDITOR_LINE_CAPACITY][E
         if (lexer_error != NO_ERROR) {
             c->error_type = lexer_error;
             populate_error_message(c, c->line_number, c->char_idx);
+            return;
         }
 
         Compiler_Error_Address validator_error = validator_run(c);
-        if (c->error_type != NO_ERROR) {
+        if (validator_error.type != NO_ERROR) {
             c->error_type = validator_error.type;
             populate_error_message(
                 c,
                 c->tokens[validator_error.token_idx].line_number,
                 c->tokens[validator_error.token_idx].char_index
             );
+            return;
         }
 
+        c->flags |= COMPILER_FLAG_IN_PROCESS;
         parser_init(&c->parser);
         parser_run(c);
-        bool no_sound_error = handle_no_sound_error(c);
-        if (!no_sound_error) {
-            c->flags |= COMPILER_FLAG_IN_PROCESS;
-        }
+        handle_no_sound_error(c);
 
     mutex_unlock(c->mutex);
 }
