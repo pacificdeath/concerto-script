@@ -3,6 +3,9 @@
 #include "raylib.h"
 #include "main.h"
 
+extern int editor_line_height(State *state);
+extern int editor_char_width(int line_height);
+
 void console_set_text(State *state, char *text) {
     for (int i = 0; i < CONSOLE_LINE_CAPACITY; i++) {
         state->console_text[i][0] = '\0';

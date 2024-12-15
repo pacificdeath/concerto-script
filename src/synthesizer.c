@@ -70,7 +70,8 @@ void synthesizer_back_buffer_generate_data(Synthesizer *synthesizer, Compiler *c
         if (audio_data == NULL) {
             thread_error();
         }
-        if (is_chord_silent(&back_buffer->sounds[i].tone.chord)) {
+        bool is_chord_silent = (back_buffer->sounds[i].tone.chord.size <= 0);
+        if (is_chord_silent) {
             for (int frame = 0; frame < frame_count; frame += 1) {
                 for (int k = 0; k < channels; k++) {
                     audio_data[frame * channels + k] = 0;

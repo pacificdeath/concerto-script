@@ -9,7 +9,7 @@
 
 #include "main.h"
 #include "windows_wrapper.h"
-#include "compiler.c"
+#include "compiler/compiler.h"
 #include "console.c"
 #include "editor.c"
 #include "synthesizer.c"
@@ -29,12 +29,12 @@
 void compiler_thread(void *data) {
     State *state = (State *)data;
     do {
-        while (!can_compile(&state->compiler)) {
+        while (!compiler_can_continue(&state->compiler)) {
             if (has_flag(state->compiler.flags, COMPILER_FLAG_CANCELLED)) {
                 return;
             }
         }
-        compile(state);
+        compiler_continue(&state->compiler);
         synthesizer_back_buffer_generate_data(&state->synthesizer, &state->compiler);
     } while (has_flag(state->compiler.flags, COMPILER_FLAG_IN_PROCESS));
 }
@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
         switch (state->state) {
         default: break;
         case STATE_TRY_COMPILE: {
-            compile(state);
+            compiler_start(&state->compiler, state->editor.line_count, state->editor.lines);
             if (state->compiler.error_type != NO_ERROR) {
                 console_set_text(state, state->compiler.error_message);
                 compiler_reset(&state->compiler);

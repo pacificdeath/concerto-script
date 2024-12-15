@@ -7,7 +7,6 @@
 #include "windows_wrapper.h"
 
 #define OCTAVE 12
-#define MAX_NOTE_FROM_C0 96
 #define MAX_OCTAVE 8
 #define A4_OFFSET 48
 #define A4_FREQ 440.0f
@@ -70,10 +69,6 @@ typedef struct Chord {
     int8_t notes[OCTAVE];
     float frequencies[OCTAVE];
 } Chord;
-
-bool is_chord_silent(Chord *chord) {
-    return chord->size <= 0;
-}
 
 typedef struct Tone {
     Waveform waveform;
@@ -234,7 +229,7 @@ typedef enum Compiler_Flags {
     COMPILER_FLAG_OUTPUT_HANDLED = 1 << 3,
 } Compiler_Flags;
 
-typedef enum Compiler_Error_Type {
+typedef enum Compiler_Error {
     NO_ERROR = 0,
     ERROR_NO_SOUND,
     ERROR_SYNTAX_ERROR,
@@ -254,7 +249,12 @@ typedef enum Compiler_Error_Type {
     ERROR_CHORD_TOO_MANY_NOTES,
     ERROR_SCALE_CAN_ONLY_CONTAIN_NOTES,
     ERROR_SCALE_CAN_NOT_BE_EMPTY,
-} Compiler_Error_Type;
+} Compiler_Error;
+
+typedef struct Compiler_Error_Address {
+    Compiler_Error type;
+    int token_idx;
+} Compiler_Error_Address;
 
 typedef struct Parser {
     int token_idx;
@@ -270,7 +270,7 @@ typedef struct Parser {
 
 typedef struct Compiler {
     Compiler_Flags flags;
-    Compiler_Error_Type error_type;
+    Compiler_Error error_type;
     Parser parser;
     char error_message[256];
     char **data;
@@ -285,29 +285,8 @@ typedef struct Compiler {
     int variable_count;
     Thread thread;
     Mutex mutex;
+    int extra_compiler_entry_token_idx;
 } Compiler;
-
-typedef enum Note_Direction {
-    DIRECTION_RISE = 1,
-    DIRECTION_FALL = -1,
-} Note_Direction;
-
-typedef struct Optional_Scale_Offset_Data {
-    Compiler *result;
-    int *token_idx;
-    Chord chord;
-    uint16_t scale;
-    Note_Direction direction;
-} Optional_Scale_Offset_Data;
-
-typedef struct Tone_Add_Data {
-    Compiler *compiler;
-    Token *token;
-    uint32_t idx;
-    Chord chord;
-    int bpm;
-    Waveform waveform;
-} Tone_Add_Data;
 
 typedef struct Synthesizer_Sound {
     int16_t *raw_data;
@@ -351,10 +330,6 @@ typedef struct State {
         STATE_INTERRUPT,
     } state;
 
-    enum {
-        FLAG_NONE = 0,
-    } flags;
-
     Keyboard_Layout keyboard_layout;
 
     int window_width;
@@ -376,22 +351,23 @@ typedef struct State {
     Synthesizer_Sound *current_sound;
 } State;
 
-void console_set_text(State *state, char *text);
-void console_get_highlighted_text(State *state, char *buffer);
-
-int editor_line_height(State *state) {
-    return state->window_height / EDITOR_MAX_VISUAL_LINES;
+inline static bool is_alphabetic(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
-int editor_char_width(int line_height) {
-    return line_height * 0.6;
+inline static bool is_numeric(char c) {
+    return (c >= '0' && c <= '9');
 }
 
-int is_valid_in_identifier (char c) {
-    return isalpha(c) || isdigit(c) || c == '_';
+inline static bool is_uppercase(char c) {
+    return (c >= 'A' && c <= 'Z');
 }
 
-bool has_flag(int flags, int flag) {
+inline static int is_valid_in_identifier(char c) {
+    return is_alphabetic(c) || is_numeric(c) || c == '_';
+}
+
+inline static bool has_flag(int flags, int flag) {
     return (flags & flag) == flag;
 }
 

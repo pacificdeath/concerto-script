@@ -5,16 +5,15 @@
 #include "raylib.h"
 #include "main.h"
 
-static bool is_alphabetic(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+extern void console_set_text(State *state, char *text);
+extern void console_get_highlighted_text(State *state, char *buffer);
+
+int editor_line_height(State *state) {
+    return state->window_height / EDITOR_MAX_VISUAL_LINES;
 }
 
-static bool is_numeric(char c) {
-    return (c >= '0' && c <= '9');
-}
-
-static bool is_uppercase(char c) {
-    return (c >= 'A' && c <= 'Z');
+int editor_char_width(int line_height) {
+    return line_height * 0.6;
 }
 
 char keyboard_key_to_char(State *state, KeyboardKey key, bool shift) {
