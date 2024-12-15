@@ -1,6 +1,15 @@
 @echo off
 setlocal enabledelayedexpansion
 
+set WINDOWS_WRAPPER_O="./build/windows_wrapper.o"
+set COMPILER_O="./build/compiler.o"
+set MAIN_O="./build/main.o"
+set MAIN_EXE="./build/main.exe"
+
+if not exist "build\" (
+    mkdir "build"
+)
+
 set D="-g -DDEBUG"
 set COMPILE_ONLY=0
 set DEBUG=""
@@ -29,7 +38,7 @@ set TEST_THREAD=%TEST_THREAD:"=%
 gcc -c ^
     !DEBUG! ^
     ./src/windows_wrapper.c ^
-    -o windows_wrapper.o
+    -o%WINDOWS_WRAPPER_O%
 
 if not %errorlevel% equ 0 (
     echo compilation of windows_wrapper.c failed
@@ -39,7 +48,7 @@ if not %errorlevel% equ 0 (
 gcc -c ^
     !DEBUG! ^
     ./src/compiler/compiler.c ^
-    -o compiler.o ^
+    -o%COMPILER_O% ^
     -I./raylib-5.0_win64_mingw-w64/include/
 
 if not %errorlevel% equ 0 (
@@ -51,7 +60,7 @@ gcc -c ^
     !DEBUG! ^
     !TEST_THREAD! ^
     ./src/main.c ^
-    -o main.o ^
+    -o%MAIN_O% ^
     -I./raylib-5.0_win64_mingw-w64/include/
 
 if not %errorlevel% equ 0 (
@@ -60,10 +69,10 @@ if not %errorlevel% equ 0 (
 )
 
 gcc ^
-    windows_wrapper.o ^
-    compiler.o ^
-    main.o ^
-    -o main.exe ^
+    %WINDOWS_WRAPPER_O% ^
+    %COMPILER_O% ^
+    %MAIN_O% ^
+    -o%MAIN_EXE% ^
     -O0 ^
     -Wall ^
     -Wextra ^
@@ -84,9 +93,9 @@ if %errorlevel% equ 0 (
     if !COMPILE_ONLY!==1 (
         goto :end
     ) else if !GDB!==1 (
-        gdb --args main.exe
+        gdb --args %MAIN_EXE%
     ) else (
-        main.exe
+        %MAIN_EXE%
     )
 )
 goto :end
