@@ -38,6 +38,17 @@ if not %errorlevel% equ 0 (
 
 gcc -c ^
     !DEBUG! ^
+    ./src/compiler/compiler.c ^
+    -o compiler.o ^
+    -I./raylib-5.0_win64_mingw-w64/include/
+
+if not %errorlevel% equ 0 (
+    echo compilation of compiler.c failed
+    goto :end
+)
+
+gcc -c ^
+    !DEBUG! ^
     !TEST_THREAD! ^
     ./src/main.c ^
     -o main.o ^
@@ -49,8 +60,9 @@ if not %errorlevel% equ 0 (
 )
 
 gcc ^
-    main.o ^
     windows_wrapper.o ^
+    compiler.o ^
+    main.o ^
     -o main.exe ^
     -O0 ^
     -Wall ^
