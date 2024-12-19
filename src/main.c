@@ -122,6 +122,7 @@ int main(int argc, char **argv) {
             if (is_playing) {
                 synthesizer_reset(&state->synthesizer);
                 compiler_reset(&state->compiler);
+                state->current_sound = NULL;
                 is_playing = false;
             }
             state->state = STATE_EDITOR;
