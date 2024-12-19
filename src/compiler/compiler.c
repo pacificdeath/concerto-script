@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,7 +19,7 @@ void compiler_init(Compiler *c) {
 void compiler_start(Compiler *c, int data_len, char data[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH]) {
     mutex_lock(c->mutex);
         c->data_len = data_len;
-        c->data = (char**)malloc(sizeof(char *) * data_len);
+        c->data = (char**)dyn_mem_alloc(sizeof(char *) * data_len);
         if (c->data == NULL) {
             thread_error();
         }
@@ -92,7 +91,7 @@ void compiler_reset(Compiler *c) {
         for (int i = 0; i < c->token_amount; i += 1) {
             switch (c->tokens[i].type) {
             case TOKEN_IDENTIFIER:
-                free(c->tokens[i].value.string);
+                dyn_mem_release(c->tokens[i].value.string);
                 c->tokens[i].value.string = NULL;
                 break;
             default:
@@ -100,11 +99,11 @@ void compiler_reset(Compiler *c) {
             }
         }
         if (c->data != NULL) {
-            free(c->data);
+            dyn_mem_release(c->data);
             c->data = NULL;
         }
         if (c->tokens != NULL) {
-            free(c->tokens);
+            dyn_mem_release(c->tokens);
             c->tokens = NULL;
         }
         *c = (Compiler){0};

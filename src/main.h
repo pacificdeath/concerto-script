@@ -1,6 +1,7 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include <stdlib.h>
 #include <stdint.h>
 
 #include "raylib.h"
@@ -365,6 +366,41 @@ inline static int is_valid_in_identifier(char c) {
 
 inline static bool has_flag(int flags, int flag) {
     return (flags & flag) == flag;
+}
+
+#ifdef DEBUG
+#include <stdio.h>
+static int allocations = 0;
+#endif
+
+inline static void *dyn_mem_alloc(size_t size) {
+    #ifdef DEBUG
+        allocations++;
+        void *m = malloc(size);
+        printf("malloc %p (%i)\n", m, allocations);
+        return m;
+    #else
+        return malloc(size);
+    #endif
+}
+
+inline static void *dyn_mem_alloc_zero(size_t size) {
+    #ifdef DEBUG
+        allocations++;
+        void *m = calloc(1, size);
+        printf("calloc %p (%i)\n", m, allocations);
+        return m;
+    #else
+        return calloc(1, size);
+    #endif
+}
+
+inline static void dyn_mem_release(void *m) {
+    #ifdef DEBUG
+        allocations--;
+        printf("free %p (%i)\n", m, allocations);
+    #endif
+    free(m);
 }
 
 #endif

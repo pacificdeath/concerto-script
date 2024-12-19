@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 #include <math.h>
 
 #include "raylib.h"
@@ -284,14 +283,14 @@ void editor_free(State *state) {
     Editor *e = &state->editor;
     UnloadFont(e->font);
     if (e->clipboard != NULL) {
-        free(e->clipboard);
+        dyn_mem_release(e->clipboard);
     }
     for (int i = 0; i < EDITOR_UNDO_BUFFER_MAX; i++) {
         Editor_Action *action = &(e->undo_buffer[i]);
         bool is_type_delete_selection = action->type == EDITOR_ACTION_DELETE_STRING;
         bool is_allocated = action->string != NULL;
         if (is_type_delete_selection && is_allocated) {
-            free(action->string);
+            dyn_mem_release(action->string);
         }
     }
 }

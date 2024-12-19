@@ -1,6 +1,5 @@
 #include "raylib.h"
 
-#include <stdlib.h>
 #include <stdint.h>
 #include <math.h>
 #include <stdio.h>
@@ -39,7 +38,7 @@ void compiler_thread(void *data) {
 }
 
 int main(int argc, char **argv) {
-    State *state = (State *)calloc(1, sizeof(State));
+    State *state = (State *)dyn_mem_alloc_zero(sizeof(State));
 
     state->window_width = 1500;
     state->window_height = 1000;
@@ -147,5 +146,5 @@ int main(int argc, char **argv) {
 
     compiler_free(&state->compiler);
     editor_free(state);
-    free(state);
+    dyn_mem_release(state);
 }

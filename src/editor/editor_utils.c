@@ -197,7 +197,7 @@ static void delete_editor_string(State *state, Editor_Coord start, Editor_Coord 
 
 static char *copy_editor_string(State *state, Editor_Coord start, Editor_Coord end) {
     Editor *e = &state->editor;
-    char *string = (char *)malloc(sizeof(char) * e->line_count * EDITOR_LINE_CAPACITY);
+    char *string = (char *)dyn_mem_alloc(sizeof(char) * e->line_count * EDITOR_LINE_CAPACITY);
     int str_idx = 0;
     if (start.y < end.y) {
         int delete_amount = end.y - start.y;

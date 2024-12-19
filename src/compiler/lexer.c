@@ -239,7 +239,7 @@ static bool try_get_note_token(Compiler *result) {
 
 static Compiler_Error lexer_run(Compiler *c) {
     c->token_amount = 0;
-    c->tokens = (Token *)malloc(sizeof(Token) * 4096);
+    c->tokens = (Token *)dyn_mem_alloc(sizeof(Token) * 4096);
     if (c->tokens == NULL) {
         thread_error();
     }
@@ -340,7 +340,7 @@ static Compiler_Error lexer_run(Compiler *c) {
                     token_add(c, TOKEN_DEFINE);
                 } else {
                     Token *token = token_add(c, TOKEN_IDENTIFIER);
-                    token->value.string = (char *)malloc(sizeof(char) * (ident_length + 1));
+                    token->value.string = (char *)dyn_mem_alloc(sizeof(char) * (ident_length + 1));
                     if (token->value.string == NULL) {
                         thread_error();
                     }

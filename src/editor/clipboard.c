@@ -4,7 +4,7 @@
 static void copy_to_clipboard(State *state) {
     Editor *e = &state->editor;
     if (e->clipboard != NULL) {
-        free(e->clipboard);
+        dyn_mem_release(e->clipboard);
         e->clipboard = NULL;
     }
     Editor_Selection_Data selection_data = get_cursor_selection_data(state);

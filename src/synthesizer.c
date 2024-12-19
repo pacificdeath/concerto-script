@@ -5,7 +5,7 @@
 inline static void sound_buffer_free(Sound_Buffer *buffer) {
     for (int i = 0; i < buffer->sound_count; i++) {
         UnloadSound(buffer->sounds[i].sound);
-        free(buffer->sounds[i].raw_data);
+        dyn_mem_release(buffer->sounds[i].raw_data);
     }
     buffer->sound_count = 0;
 }
@@ -32,6 +32,7 @@ void synthesizer_cancel(Synthesizer *synthesizer) {
 }
 
 void synthesizer_reset(Synthesizer *synthesizer) {
+    synthesizer->flags = SYNTHESIZER_FLAG_NONE;
     for (int i = 0; i < 2; i++) {
         Sound_Buffer *b = &synthesizer->buffers[i];
         mutex_lock(b->mutex);
@@ -66,7 +67,7 @@ void synthesizer_back_buffer_generate_data(Synthesizer *synthesizer, Compiler *c
     for (int i = 0; i < SYNTHESIZER_TONE_CAPACITY; i++) {
         int frame_count = back_buffer->sounds[i].tone.duration * sample_rate;
         int data_size = frame_count * channels * bytes_per_sample;
-        int16_t *audio_data = (int16_t *)malloc(data_size);
+        int16_t *audio_data = (int16_t *)dyn_mem_alloc(data_size);
         if (audio_data == NULL) {
             thread_error();
         }

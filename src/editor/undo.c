@@ -10,7 +10,7 @@ static void register_undo(State *state, Editor_Action_Type type, Editor_Coord co
     if (wrap) {
         bool cleanup_needed = action->type == EDITOR_ACTION_DELETE_STRING;
         if (cleanup_needed) {
-            free(action->string);
+            dyn_mem_release(action->string);
         }
     } else {
         e->undo_buffer_size++;
@@ -81,7 +81,7 @@ static void undo(State *state) {
         Editor_Coord string_end = add_editor_string(state, action->string, action->coord);
         set_cursor_y(state, string_end.y);
         set_cursor_x(state, string_end.x);
-        free(action->string);
+        dyn_mem_release(action->string);
     } break;
     }
 }
