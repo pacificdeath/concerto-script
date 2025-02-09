@@ -7,6 +7,9 @@
 #include "raylib.h"
 #include "windows_wrapper.h"
 
+#define WINDOW_BASE_WIDTH 1500
+#define WINDOW_BASE_HEIGHT 1000
+
 #define OCTAVE 12
 #define MAX_OCTAVE 8
 #define A4_OFFSET 48
@@ -112,6 +115,8 @@ typedef struct Editor {
 
     int line_count;
     char lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
+
+    float size_multiplier;
 
     Editor_Coord cursor;
     int selection_x;
@@ -347,6 +352,15 @@ typedef struct State {
     Synthesizer synthesizer;
     Synthesizer_Sound *current_sound;
 } State;
+
+inline static void resize_window(State *state, float multiplier) {
+    state->window_width = WINDOW_BASE_WIDTH * multiplier;
+    state->window_height = WINDOW_BASE_HEIGHT * multiplier;
+    SetWindowSize(
+        state->window_width,
+        state->window_height
+    );
+}
 
 inline static bool is_alphabetic(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');

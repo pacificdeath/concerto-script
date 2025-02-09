@@ -17,6 +17,7 @@ void editor_init(State *state, char *filename) {
     Editor *e = &state->editor;
     e->font = LoadFont("Consolas.ttf");
     e->line_count = 1;
+    e->size_multiplier = 1.0f;
     e->autoclick_key = KEY_NULL;
     e->finder_match_idx = -1;
     e->console_highlight_idx = -1;
@@ -28,6 +29,26 @@ Big_State editor_input(State *state) {
 
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+
+    if (ctrl) {
+        const float min_size = 0.5f;
+        const float max_size = 2.0f;
+        const float incr = 0.1f;
+
+        if (IsKeyPressed(KEY_KP_ADD)) {
+            e->size_multiplier += incr;
+            if (e->size_multiplier > max_size) {
+                e->size_multiplier = max_size;
+            }
+            resize_window(state, e->size_multiplier);
+        } else if (IsKeyPressed(KEY_KP_SUBTRACT)) {
+            e->size_multiplier -= incr;
+            if (e->size_multiplier < min_size) {
+                e->size_multiplier = min_size;
+            }
+            resize_window(state, e->size_multiplier);
+        }
+    }
 
     switch (state->state) {
     default:

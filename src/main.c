@@ -40,8 +40,8 @@ void compiler_thread(void *data) {
 int main(int argc, char **argv) {
     State *state = (State *)dyn_mem_alloc_zero(sizeof(State));
 
-    state->window_width = 1500;
-    state->window_height = 1000;
+    state->window_width = WINDOW_BASE_WIDTH;
+    state->window_height = WINDOW_BASE_HEIGHT;
 
     SetTraceLogLevel(
         #ifdef DEBUG

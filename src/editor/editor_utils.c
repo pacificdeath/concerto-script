@@ -8,11 +8,11 @@ static void console_set_text(State *state, char *text);
 static void console_get_highlighted_text(State *state, char *buffer);
 static void register_undo(State *state, Editor_Action_Type type, Editor_Coord coord, void *data);
 
-static int editor_line_height(State *state) {
+inline static int editor_line_height(State *state) {
     return state->window_height / EDITOR_MAX_VISUAL_LINES;
 }
 
-static int editor_char_width(int line_height) {
+inline static int editor_char_width(int line_height) {
     return line_height * 0.6;
 }
 
