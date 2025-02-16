@@ -4,11 +4,15 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#include "raylib.h"
+#include "../raylib-5.0_win64_mingw-w64/include/raylib.h"
 #include "windows_wrapper.h"
 
 #define WINDOW_BASE_WIDTH 1500
 #define WINDOW_BASE_HEIGHT 1000
+
+#define THEMES_DIRECTORY "themes"
+#define THEME_DEFAULT THEMES_DIRECTORY"/default"
+#define PROGRAMS_DIRECTORY "programs"
 
 #define OCTAVE 12
 #define MAX_OCTAVE 8
@@ -35,25 +39,9 @@
 #define EDITOR_FINDER_BUFFER_MAX 32
 #define EDITOR_GO_TO_LINE_BUFFER_MAX 5
 #define EDITOR_UNDO_BUFFER_MAX 64
-#define EDITOR_BG_COLOR             (Color) { 0X00, 0X00, 0X00, 0XFF }
-#define EDITOR_NORMAL_COLOR         (Color) { 0XFF, 0XFF, 0XFF, 0XFF }
-#define EDITOR_PLAY_COLOR           (Color) { 0X00, 0XFF, 0X88, 0XFF }
-#define EDITOR_WAIT_COLOR           (Color) { 0XFF, 0X88, 0X88, 0XFF }
-#define EDITOR_KEYWORD_COLOR        (Color) { 0XBB, 0X88, 0XFF, 0XFF }
-#define EDITOR_NOTE_COLOR           (Color) { 0XFF, 0XBB, 0X00, 0XFF }
-#define EDITOR_PAREN_COLOR          (Color) { 0X66, 0X44, 0X88, 0XFF }
-#define EDITOR_SPACE_COLOR          (Color) { 0X44, 0X44, 0X44, 0XFF }
-#define EDITOR_COMMENT_COLOR        EDITOR_SPACE_COLOR
-#define EDITOR_LINENUMBER_COLOR     (Color) { 0X88, 0X88, 0X88, 0XFF }
-#define EDITOR_CURSOR_COLOR         (Color) { 0X00, 0XFF, 0XFF, 0XFF }
-#define EDITOR_SELECTION_COLOR      (Color) { 0X00, 0X88, 0XFF, 0X88 }
 
 #define CONSOLE_LINE_CAPACITY 32
 #define CONSOLE_LINE_MAX_LENGTH 255
-#define CONSOLE_BG_COLOR (Color) {0, 0, 0, 255}
-#define CONSOLE_FG_DEFAULT_COLOR (Color) {0, 255, 0, 255}
-#define CONSOLE_FG_ERROR_COLOR (Color) {255, 0, 0, 255}
-#define CONSOLE_HIGHLIGHT_COLOR (Color) {0, 255, 255, 128}
 
 #define VARIABLE_MAX_COUNT 255
 
@@ -84,6 +72,34 @@ typedef struct Tone {
     float duration;
 } Tone;
 
+typedef enum Editor_Theme_Status {
+    EDITOR_THEME_OK,
+    EDITOR_THEME_ERROR,
+    EDITOR_THEME_NO_CHANGES,
+} Editor_Theme_Status;
+
+typedef struct Editor_Theme {
+    char filepath[EDITOR_FILENAME_MAX_LENGTH];
+    long file_mod_time;
+    Color bg;
+    Color fg;
+    Color play;
+    Color wait;
+    Color keyword;
+    Color note;
+    Color paren;
+    Color space;
+    Color comment;
+    Color linenumber;
+    Color cursor;
+    Color selection;
+    Color console_bg;
+    Color console_foreground;
+    Color console_foreground_error;
+    Color console_highlight;
+    Color play_cursor;
+} Editor_Theme;
+
 typedef enum Editor_Action_Type {
     EDITOR_ACTION_ADD_LINE,
     EDITOR_ACTION_ADD_CHAR,
@@ -110,6 +126,8 @@ typedef struct Editor_Action {
 
 typedef struct Editor {
     Font font;
+
+    Editor_Theme theme;
 
     char current_file[EDITOR_FILENAME_MAX_LENGTH];
 
@@ -329,9 +347,11 @@ typedef struct Synthesizer {
 
 typedef enum Big_State {
     STATE_EDITOR,
+    STATE_EDITOR_THEME_ERROR,
     STATE_EDITOR_SAVE_FILE,
     STATE_EDITOR_SAVE_FILE_ERROR,
-    STATE_EDITOR_FILE_EXPLORER,
+    STATE_EDITOR_FILE_EXPLORER_THEMES,
+    STATE_EDITOR_FILE_EXPLORER_PROGRAMS,
     STATE_EDITOR_FIND_TEXT,
     STATE_EDITOR_GO_TO_LINE,
     STATE_TRY_COMPILE,
@@ -339,6 +359,7 @@ typedef enum Big_State {
     STATE_WAITING_TO_PLAY,
     STATE_PLAY,
     STATE_INTERRUPT,
+    STATE_QUIT,
 } Big_State;
 
 typedef struct State {
@@ -351,6 +372,7 @@ typedef struct State {
     Compiler compiler;
     Synthesizer synthesizer;
     Synthesizer_Sound *current_sound;
+    float sound_time;
 } State;
 
 inline static void resize_window(State *state, float multiplier) {

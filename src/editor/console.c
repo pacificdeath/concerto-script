@@ -1,6 +1,5 @@
 #include <string.h>
 
-#include "raylib.h"
 #include "../main.h"
 #include "editor_utils.c"
 
@@ -67,31 +66,32 @@ void console_render(State *state) {
 
     switch (state->state) {
     default:
-    case STATE_EDITOR_FILE_EXPLORER: {
+    case STATE_EDITOR_FILE_EXPLORER_PROGRAMS: {
         rec.x = (state->window_width * 0.1f) - padding;
         rec.y = (state->window_height * 0.1f) - padding;
         rec.width = (state->window_width * 0.8f) + (padding * 2.0f);
-        fg_color = CONSOLE_FG_DEFAULT_COLOR;
+        fg_color = e->theme.console_foreground;
     } break;
+    case STATE_EDITOR_THEME_ERROR:
     case STATE_EDITOR_SAVE_FILE_ERROR:
     case STATE_COMPILATION_ERROR: {
         rec.x = (state->window_width * 0.25f) - padding;
         rec.y = (state->window_height * 0.25f) - padding;
         rec.width = (state->window_width * 0.5f) + (padding * 2.0f);
-        fg_color = CONSOLE_FG_ERROR_COLOR;
+        fg_color = e->theme.console_foreground_error;
     } break;
     case STATE_EDITOR_FIND_TEXT: {
         int width = char_width * (EDITOR_FINDER_BUFFER_MAX + 1);
         rec.x = (state->window_width * 0.5f) - (width * 0.5f) - padding;
         rec.y = (state->window_height * 0.7f) - padding;
         rec.width = width + (padding * 2.0f);
-        fg_color = CONSOLE_FG_DEFAULT_COLOR;
+        fg_color = e->theme.console_foreground;
     } break;
     }
 
     rec.height = (e->console_line_count * line_height) + (padding * 2.0f);
 
-    DrawRectangleRec(rec, CONSOLE_BG_COLOR);
+    DrawRectangleRec(rec, e->theme.console_bg);
     DrawRectangleLinesEx(rec, rec_line_size, fg_color);
     for (int i = 0; i < CONSOLE_LINE_CAPACITY; i += 1) {
         for (int j = 0; e->console_text[i][j] != '\0'; j += 1) {
@@ -108,6 +108,6 @@ void console_render(State *state) {
         rec.y += padding + e->console_highlight_idx * line_height;
         rec.width -= padding * 2.0f;
         rec.height = line_height;
-        DrawRectangleRec(rec, CONSOLE_HIGHLIGHT_COLOR);
+        DrawRectangleRec(rec, e->theme.console_highlight);
     }
 }

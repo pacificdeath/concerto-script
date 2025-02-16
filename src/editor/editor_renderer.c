@@ -1,8 +1,9 @@
-#include "raylib.h"
 #include "../main.h"
 #include "editor_utils.c"
 
-static void render_cursor(Editor_Cursor_Render_Data data) {
+#define CLAMP(value, min, max) (value < min ? min : (value > max ? max : value))
+
+static void render_cursor(Editor_Cursor_Render_Data data, Color color) {
     Vector2 start = {
         .x = data.line_number_offset + (data.x * data.char_width),
         .y = ((data.y - data.visual_vertical_offset) * data.line_height)
@@ -11,18 +12,17 @@ static void render_cursor(Editor_Cursor_Render_Data data) {
         .x = start.x,
         .y = start.y + data.line_height
     };
-    Color color = EDITOR_CURSOR_COLOR;
     color.a = data.alpha;
     DrawLineEx(start, end, EDITOR_CURSOR_WIDTH, color);
 }
 
-static void render_selection(Editor_Selection_Render_Data data) {
+static void render_selection(Editor_Selection_Render_Data data, Color color) {
     DrawRectangle(
         data.line_number_offset + (data.start_x * data.char_width),
         ((data.line - data.visual_vertical_offset) * data.line_height),
         ((data.end_x - data.start_x) * data.char_width),
         data.line_height,
-        EDITOR_SELECTION_COLOR
+        color
     );
 }
 
@@ -168,14 +168,14 @@ static void editor_render_base(State *state, float line_height, float char_width
 
         bool rest_is_comment = false;
         bool found_word = false;
-        Color color = EDITOR_NORMAL_COLOR;
+        Color color = state->editor.theme.fg;
 
         sprintf(line_number_str, "%4i", line_idx + 1);
         int line_number_str_len = strlen(line_number_str);
 
         for (int j = 0; j < line_number_str_len; j++) {
             Vector2 position = { j * char_width, i * line_height };
-            DrawTextCodepoint(e->font, line_number_str[j], position, line_height, EDITOR_LINENUMBER_COLOR);
+            DrawTextCodepoint(e->font, line_number_str[j], position, line_height, state->editor.theme.linenumber);
         }
 
         for (int j = 0; e->lines[line_idx][j] != '\0'; j++) {
@@ -191,7 +191,7 @@ static void editor_render_base(State *state, float line_height, float char_width
                 case '\0':
                 {
                     found_word = false;
-                    color = EDITOR_NORMAL_COLOR;
+                    color = state->editor.theme.fg;
                 } break;
                 }
             }
@@ -205,12 +205,12 @@ static void editor_render_base(State *state, float line_height, float char_width
                     Token_Type play_or_wait = try_get_play_or_wait_token_type_at_coord(state, coord);
                     if (play_or_wait != TOKEN_NONE) {
                         if (play_or_wait == TOKEN_PLAY) {
-                            color = EDITOR_PLAY_COLOR;
+                            color = state->editor.theme.play;
                         } else {
-                            color = EDITOR_WAIT_COLOR;
+                            color = state->editor.theme.wait;
                         }
                     } else if (is_note_at_coord(state, coord)) {
-                        color = EDITOR_NOTE_COLOR;
+                        color = state->editor.theme.note;
                     } else {
                         int char_offset;
                         for (
@@ -224,9 +224,9 @@ static void editor_render_base(State *state, float line_height, float char_width
                         current_word[char_offset] = '\0';
 
                         if (strcmp(current_word, "play") == 0) {
-                            color = EDITOR_PLAY_COLOR;
+                            color = state->editor.theme.play;
                         } else if (strcmp(current_word, "wait") == 0) {
-                            color = EDITOR_WAIT_COLOR;
+                            color = state->editor.theme.wait;
                         } else if (
                             strcmp(current_word, "start") == 0 ||
                             strcmp(current_word, "sine") == 0 ||
@@ -243,27 +243,27 @@ static void editor_render_base(State *state, float line_height, float char_width
                             strcmp(current_word, "scale") == 0 ||
                             strcmp(current_word, "rise") == 0 ||
                             strcmp(current_word, "fall") == 0) {
-                            color = EDITOR_KEYWORD_COLOR;
+                            color = state->editor.theme.keyword;
                         } else {
-                            color = EDITOR_NORMAL_COLOR;
+                            color = state->editor.theme.fg;
                         }
                     }
                 } else {
                     switch (c) {
                     case COMMENT_CHAR:
                         rest_is_comment = true;
-                        color = EDITOR_COMMENT_COLOR;
+                        color = state->editor.theme.comment;
                         break;
                     case '(':
                     case ')':
-                        color = EDITOR_PAREN_COLOR;
+                        color = state->editor.theme.paren;
                         break;
                     case ' ':
-                        color = EDITOR_SPACE_COLOR;
+                        color = state->editor.theme.space;
                         c = '-';
                         break;
                     default:
-                        color = EDITOR_NORMAL_COLOR;
+                        color = state->editor.theme.fg;
                         break;
                     }
                 }
@@ -303,23 +303,23 @@ static void editor_render_state_write(State *state) {
         if (selection_data.start.y == selection_data.end.y) {
             selection_render_data.start_x = selection_data.start.x;
             selection_render_data.end_x = selection_data.end.x;
-            render_selection(selection_render_data);
+            render_selection(selection_render_data, e->theme.selection);
         } else {
             selection_render_data.start_x = selection_data.start.x;
             selection_render_data.end_x = strlen(e->lines[selection_render_data.line]);
-            render_selection(selection_render_data);
+            render_selection(selection_render_data, e->theme.selection);
 
             selection_render_data.start_x = 0;
             for (int i = selection_data.start.y + 1; i < selection_data.end.y; i++) {
                 selection_render_data.line = i;
                 selection_render_data.end_x = strlen(e->lines[i]);
-                render_selection(selection_render_data);
+                render_selection(selection_render_data, e->theme.selection);
             }
 
             selection_render_data.line = selection_data.end.y;
             selection_render_data.start_x = 0;
             selection_render_data.end_x = selection_data.end.x;
-            render_selection(selection_render_data);
+            render_selection(selection_render_data, e->theme.selection);
         }
     }
     e->cursor_anim_time = e->cursor_anim_time + (state->delta_time * EDITOR_CURSOR_ANIMATION_SPEED);
@@ -337,7 +337,7 @@ static void editor_render_state_write(State *state) {
         .char_width = char_width,
         .alpha = alpha
     };
-    render_cursor(cursor_data);
+    render_cursor(cursor_data, e->theme.cursor);
 }
 
 void editor_render_state_wait_to_play(State *state) {
@@ -389,13 +389,12 @@ void editor_render_state_play(State *state) {
 
     rec.height = (2 * rec_line_size) + line_height;
 
-    Color color = { .g = 0, .a = 255 };
-    if (tone->token_idx % 2 == 0) {
-        color.r = 255;
-        color.b = 0;
-    } else {
-        color.r = 0;
-        color.b = 255;
-    }
+    Color color = e->theme.play_cursor;
+
+    color.a = CLAMP(
+        ((state->current_sound->tone.duration - state->sound_time) 
+        / (float)state->current_sound->tone.duration) * 255, 
+        0, 255);
+
     DrawRectangleLinesEx(rec, 5, color);
 }

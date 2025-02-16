@@ -1,0 +1,17 @@
+background : 0
+foreground : f
+play : f
+wait : f
+keyword : f
+note : f
+paren : f
+space : 0
+comment : 4
+linenumber : f
+cursor : f
+selection : 00f8
+console_background : 0
+console_foreground : f
+console_foreground_error : f
+console_highlight : fff8
+play_cursor : f

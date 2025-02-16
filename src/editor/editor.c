@@ -2,8 +2,8 @@
 #include <string.h>
 #include <math.h>
 
-#include "raylib.h"
 #include "../main.h"
+#include "theme.c"
 #include "editor_utils.c"
 #include "clipboard.c"
 #include "undo.c"
@@ -16,12 +16,16 @@
 void editor_init(State *state, char *filename) {
     Editor *e = &state->editor;
     e->font = LoadFont("Consolas.ttf");
+    TextCopy(e->theme.filepath, THEME_DEFAULT);
+    if (editor_theme_update(state, console_set_text)) {
+        state->state = STATE_EDITOR_THEME_ERROR;
+    }
     e->line_count = 1;
     e->size_multiplier = 1.0f;
     e->autoclick_key = KEY_NULL;
     e->finder_match_idx = -1;
     e->console_highlight_idx = -1;
-    editor_load_file(state, filename);
+    editor_load_program(state, filename);
 }
 
 Big_State editor_input(State *state) {
@@ -34,6 +38,10 @@ Big_State editor_input(State *state) {
         const float min_size = 0.5f;
         const float max_size = 2.0f;
         const float incr = 0.1f;
+
+        if (IsKeyPressed(KEY_Q)) {
+            return STATE_QUIT;
+        }
 
         if (IsKeyPressed(KEY_KP_ADD)) {
             e->size_multiplier += incr;
@@ -54,10 +62,15 @@ Big_State editor_input(State *state) {
     default:
         break;
     case STATE_EDITOR: {
-        if (ctrl && IsKeyPressed(KEY_O)) {
-            update_filename_buffer(state);
+        if (ctrl && IsKeyPressed(KEY_T)) {
+            update_filename_buffer(state, THEMES_DIRECTORY);
             e->console_highlight_idx = 1;
-            return STATE_EDITOR_FILE_EXPLORER;
+            return STATE_EDITOR_FILE_EXPLORER_THEMES;
+        }
+        if (ctrl && IsKeyPressed(KEY_O)) {
+            update_filename_buffer(state, PROGRAMS_DIRECTORY);
+            e->console_highlight_idx = 1;
+            return STATE_EDITOR_FILE_EXPLORER_PROGRAMS;
         }
         if (ctrl && IsKeyPressed(KEY_S)) {
             char buffer[EDITOR_FILENAME_MAX_LENGTH];
@@ -253,7 +266,8 @@ Big_State editor_input(State *state) {
             return STATE_EDITOR;
         }
     } break;
-    case STATE_EDITOR_FILE_EXPLORER: return file_explorer(state, shift);
+    case STATE_EDITOR_FILE_EXPLORER_THEMES:
+    case STATE_EDITOR_FILE_EXPLORER_PROGRAMS: return file_explorer(state, shift);
     case STATE_EDITOR_FIND_TEXT: return find_text(state, shift);
     case STATE_EDITOR_GO_TO_LINE: return go_to_line(state);
     case STATE_COMPILATION_ERROR: {
@@ -281,10 +295,21 @@ void editor_render(State *state) {
     } break;
     case STATE_EDITOR: {
         editor_render_state_write(state);
+        if (editor_theme_update_if_modified(state, console_set_text) == EDITOR_THEME_ERROR) {
+            state->state = STATE_EDITOR_THEME_ERROR;
+        }
+    } break;
+    case STATE_EDITOR_THEME_ERROR: {
+        editor_render_state_write(state);
+        console_render(state);
+        if (editor_theme_update_if_modified(state, console_set_text) == EDITOR_THEME_OK) {
+            state->state = STATE_EDITOR;
+        }
     } break;
     case STATE_EDITOR_SAVE_FILE:
     case STATE_EDITOR_SAVE_FILE_ERROR:
-    case STATE_EDITOR_FILE_EXPLORER:
+    case STATE_EDITOR_FILE_EXPLORER_THEMES:
+    case STATE_EDITOR_FILE_EXPLORER_PROGRAMS:
     case STATE_EDITOR_FIND_TEXT:
     case STATE_EDITOR_GO_TO_LINE:
     case STATE_COMPILATION_ERROR: {

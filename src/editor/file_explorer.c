@@ -1,8 +1,9 @@
 #include <stdio.h>
+
 #include "../main.h"
 #include "editor_utils.c"
 
-void editor_load_file(State *state, char *filename) {
+void editor_load_program(State *state, char *filename) {
     Editor *e = &state->editor;
     FILE *file;
     char line[EDITOR_LINE_MAX_LENGTH];
@@ -47,10 +48,10 @@ bool editor_save_file(State *state) {
     return true;
 }
 
-void update_filename_buffer(State *state) {
+void update_filename_buffer(State *state, char *directory) {
     Editor *e = &state->editor;
     char filter[64];
-    sprintf(filter, "programs\\%s*.*", e->file_search_buffer);
+    sprintf(filter, "%s\\%s*.*", directory, e->file_search_buffer);
     int file_amount = list_files(filter, e->filename_buffer, EDITOR_FILENAMES_MAX_AMOUNT);
     char console_text[EDITOR_FILENAMES_MAX_AMOUNT * EDITOR_FILENAME_MAX_LENGTH];
     sprintf(console_text, "%s\n%s", e->file_search_buffer, e->filename_buffer);
@@ -60,6 +61,15 @@ void update_filename_buffer(State *state) {
 
 Big_State file_explorer(State *state, bool shift) {
     Editor *e = &state->editor;
+    char *directory;
+    switch (state->state) {
+    case STATE_EDITOR_FILE_EXPLORER_THEMES: directory = THEMES_DIRECTORY; break;
+    case STATE_EDITOR_FILE_EXPLORER_PROGRAMS: directory = PROGRAMS_DIRECTORY; break;
+    default: {
+        TraceLog(LOG_ERROR, "Horrible code in file explorer");
+        return STATE_EDITOR;
+    }
+    }
 
     if (IsKeyPressed(KEY_ESCAPE)) {
         e->file_search_buffer[0] = '\0';
@@ -78,13 +88,21 @@ Big_State file_explorer(State *state, bool shift) {
     } else if (auto_click(state, KEY_BACKSPACE) && e->file_search_buffer_length > 0) {
         e->file_search_buffer_length--;
         e->file_search_buffer[e->file_search_buffer_length] = '\0';
-        update_filename_buffer(state);
+        update_filename_buffer(state, directory);
     } else if (IsKeyPressed(KEY_ENTER)) {
         char filename[128];
         console_get_highlighted_text(state, filename);
         char filepath[128];
-        sprintf(filepath, "programs\\%s", filename);
-        editor_load_file(state, filepath);
+        sprintf(filepath, "%s\\%s", directory, filename);
+        switch (state->state) {
+        default: return STATE_EDITOR;
+        case STATE_EDITOR_FILE_EXPLORER_THEMES:
+            TextCopy(e->theme.filepath, filepath);
+            break;
+        case STATE_EDITOR_FILE_EXPLORER_PROGRAMS:
+            editor_load_program(state, filepath);
+            break;
+        }
         e->file_search_buffer[0] = '\0';
         e->file_search_buffer_length = 0;
         e->file_cursor = 0;
@@ -97,7 +115,7 @@ Big_State file_explorer(State *state, bool shift) {
                 e->file_search_buffer[e->file_search_buffer_length] = c;
                 e->file_search_buffer_length++;
                 e->file_search_buffer[e->file_search_buffer_length] = '\0';
-                update_filename_buffer(state);
+                update_filename_buffer(state, directory);
                 break;
             }
         }

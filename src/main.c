@@ -102,6 +102,7 @@ int main(int argc, char **argv) {
         case STATE_WAITING_TO_PLAY: {
             if (state->current_sound != NULL) {
                 state->state = STATE_PLAY;
+                state->sound_time = 0;
                 break;
             }
         } break;
@@ -116,6 +117,7 @@ int main(int argc, char **argv) {
                     is_playing = false;
                 }
             }
+            state->sound_time += state->delta_time;
         } break;
         case STATE_INTERRUPT: {
             if (is_playing) {
@@ -125,10 +127,14 @@ int main(int argc, char **argv) {
                 is_playing = false;
             }
             state->state = STATE_EDITOR;
-        }
+        } break;
+        case STATE_QUIT: {
+            goto application_exit;
+        } break;
         }
 
         if (is_playing && !is_synthesizer_sound_playing(state->current_sound)) {
+            state->sound_time = 0;
             state->current_sound = synthesizer_front_buffer_try_get_sound(&state->synthesizer);
             if (state->current_sound != NULL) {
                 PlaySound(state->current_sound->sound);
@@ -136,10 +142,12 @@ int main(int argc, char **argv) {
         }
 
         BeginDrawing();
-            ClearBackground(EDITOR_BG_COLOR);
+            ClearBackground(state->editor.theme.bg);
             editor_render(state);
         EndDrawing();
     }
+
+    application_exit:
 
     CloseWindow();
     CloseAudioDevice();
