@@ -287,8 +287,6 @@ static void editor_render_state_write(State *state) {
 
     int line_number_padding = char_width * EDITOR_LINE_NUMBER_PADDING;
 
-    editor_render_base(state, line_height, char_width, line_number_padding);
-
     if (cursor_selection_active(state)) {
         Editor_Selection_Data selection_data = get_cursor_selection_data(state);
         Editor_Selection_Render_Data selection_render_data = {
@@ -322,6 +320,9 @@ static void editor_render_state_write(State *state) {
             render_selection(selection_render_data, e->theme.selection);
         }
     }
+
+    editor_render_base(state, line_height, char_width, line_number_padding);
+
     e->cursor_anim_time = e->cursor_anim_time + (state->delta_time * EDITOR_CURSOR_ANIMATION_SPEED);
     float pi2 = PI * 2.0f;
     if (e->cursor_anim_time > pi2) {

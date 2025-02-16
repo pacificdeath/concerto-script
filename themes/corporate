@@ -1,0 +1,17 @@
+background : 222
+foreground : ddd
+play : 5db
+wait : eeb
+keyword : c8c
+note : d97
+paren : 888
+space : 444
+comment : 7a5
+linenumber : 888
+cursor : fff
+selection : 257
+console_background : 222
+console_foreground : ddd
+console_foreground_error : d44
+console_highlight : 08c
+play_cursor : fff

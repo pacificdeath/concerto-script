@@ -92,6 +92,15 @@ void console_render(State *state) {
     rec.height = (e->console_line_count * line_height) + (padding * 2.0f);
 
     DrawRectangleRec(rec, e->theme.console_bg);
+    if (e->console_highlight_idx > 0) {
+        Rectangle highlight_rec = {
+            .x = rec.x + padding,
+            .y = rec.y + padding + e->console_highlight_idx * line_height,
+            .width = rec.width - padding * 2.0f,
+            .height = line_height,
+        };
+        DrawRectangleRec(highlight_rec, e->theme.console_highlight);
+    }
     DrawRectangleLinesEx(rec, rec_line_size, fg_color);
     for (int i = 0; i < CONSOLE_LINE_CAPACITY; i += 1) {
         for (int j = 0; e->console_text[i][j] != '\0'; j += 1) {
@@ -101,13 +110,5 @@ void console_render(State *state) {
             };
             DrawTextCodepoint(e->font, e->console_text[i][j], position, line_height, fg_color);
         }
-    }
-
-    if (e->console_highlight_idx > 0) {
-        rec.x += padding;
-        rec.y += padding + e->console_highlight_idx * line_height;
-        rec.width -= padding * 2.0f;
-        rec.height = line_height;
-        DrawRectangleRec(rec, e->theme.console_highlight);
     }
 }

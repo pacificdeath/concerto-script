@@ -228,7 +228,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
                     }
                 } else {
                     char error[64];
-                    sprintf(error, "Theme error\nInvalid hex digit: \'%i\' (char %i)\nLine %i", c, c, line);
+                    sprintf(error, "Theme error\nInvalid hex digit: \'%i\'\nLine %i", c, line);
                     on_error(state, error);
                     UnloadFileData(data);
                     return EDITOR_THEME_ERROR;
