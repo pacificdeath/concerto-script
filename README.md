@@ -17,7 +17,7 @@ The text editor is following many standard conventions such as `CTRL + C/V/X/G/F
 * `CRTL + O`: Open one of the built-in music programs.
 * `CRTL + P`: Compile and run the current program.
 * `CRTL + D`: Go to definition of identifier under the cursor.
-* `CRTL + T`: Select another color scheme.
+* `CRTL + T`: Select another color theme.
 * `CRTL + Q`: Quit application.
 
 ## Syntax
