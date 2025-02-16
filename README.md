@@ -15,8 +15,10 @@ Running the program will open an empty music program in the integrated text edit
 The text editor is following many standard conventions such as `CTRL + C/V/X/G/F` but it has some unique features:
 
 * `CRTL + O`: Open one of the built-in music programs.
-* `CRTL + P`: Compile and run the current program
+* `CRTL + P`: Compile and run the current program.
 * `CRTL + D`: Go to definition of identifier under the cursor.
+* `CRTL + T`: Select another color scheme.
+* `CRTL + Q`: Quit application.
 
 ## Syntax
 
