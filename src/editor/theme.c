@@ -61,7 +61,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
         trunc_str(theme->filepath, trunc_filename);
         sprintf(error, "%i Theme error\nFile %s not found", FileExists(theme->filepath), trunc_filename);
         on_error(state, error);
-        return EDITOR_THEME_ERROR;
+        return EDITOR_THEME_CHANGED_ERROR;
     }
 
     bool error = false;
@@ -96,7 +96,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
                     sprintf(error, "Theme error\nExpected: \':\'\nLine %i", line);
                     on_error(state, error);
                     UnloadFileData(data);
-                    return EDITOR_THEME_ERROR;
+                    return EDITOR_THEME_CHANGED_ERROR;
                 }
             } else {
                 key[j] = c;
@@ -151,7 +151,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
             sprintf(error, "Theme error\nUnknown key: \"%s\"", key);
             on_error(state, error);
             UnloadFileData(data);
-            return EDITOR_THEME_ERROR;
+            return EDITOR_THEME_CHANGED_ERROR;
         }
 
         while (isspace(data[i])) {
@@ -169,7 +169,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
                 char *error = "Theme error\nThe code is terrible";
                 on_error(state, error);
                 UnloadFileData(data);
-                return EDITOR_THEME_ERROR;
+                return EDITOR_THEME_CHANGED_ERROR;
             }
             }
 
@@ -207,7 +207,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
                         sprintf(error, "Theme error\nExpected color hex values\nLine %i", line);
                         on_error(state, error);
                         UnloadFileData(data);
-                        return EDITOR_THEME_ERROR;
+                        return EDITOR_THEME_CHANGED_ERROR;
                     case 1:
                         color->g = color->r;
                         color->b = color->r;
@@ -231,7 +231,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
                     sprintf(error, "Theme error\nInvalid hex digit: \'%i\'\nLine %i", c, line);
                     on_error(state, error);
                     UnloadFileData(data);
-                    return EDITOR_THEME_ERROR;
+                    return EDITOR_THEME_CHANGED_ERROR;
                 }
             }
             }
@@ -245,13 +245,14 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
     }
 
     UnloadFileData(data);
-    return EDITOR_THEME_OK;
+    return EDITOR_THEME_CHANGED_OK;
 };
 
 Editor_Theme_Status editor_theme_update_if_modified(State *state, void (*on_error)(State*,char*)) {
     Editor_Theme *theme = &(state->editor.theme);
     if (theme->file_mod_time != GetFileModTime(theme->filepath)) {
-        return editor_theme_update(state, on_error);
+        Editor_Theme_Status theme_status = editor_theme_update(state, on_error);
+        return theme_status;
     }
-    return EDITOR_THEME_NO_CHANGES;
+    return EDITOR_THEME_UNCHANGED;
 }

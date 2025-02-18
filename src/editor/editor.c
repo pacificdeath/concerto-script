@@ -17,7 +17,8 @@ void editor_init(State *state, char *filename) {
     Editor *e = &state->editor;
     e->font = LoadFont("Consolas.ttf");
     TextCopy(e->theme.filepath, THEME_DEFAULT);
-    if (editor_theme_update(state, console_set_text)) {
+    Editor_Theme_Status theme_status = editor_theme_update(state, console_set_text);
+    if (theme_status == EDITOR_THEME_CHANGED_ERROR) {
         state->state = STATE_EDITOR_THEME_ERROR;
     }
     e->line_count = 1;
@@ -266,7 +267,16 @@ Big_State editor_input(State *state) {
             return STATE_EDITOR;
         }
     } break;
-    case STATE_EDITOR_FILE_EXPLORER_THEMES:
+    case STATE_EDITOR_FILE_EXPLORER_THEMES: {
+        Big_State new_state = file_explorer(state, shift);
+        if (new_state == STATE_EDITOR) {
+            Editor_Theme_Status theme_status = editor_theme_update(state, console_set_text);
+            if (theme_status == EDITOR_THEME_CHANGED_ERROR) {
+                return STATE_EDITOR_THEME_ERROR;
+            }
+        }
+        return new_state;
+    }
     case STATE_EDITOR_FILE_EXPLORER_PROGRAMS: return file_explorer(state, shift);
     case STATE_EDITOR_FIND_TEXT: return find_text(state, shift);
     case STATE_EDITOR_GO_TO_LINE: return go_to_line(state);
@@ -295,14 +305,16 @@ void editor_render(State *state) {
     } break;
     case STATE_EDITOR: {
         editor_render_state_write(state);
-        if (editor_theme_update_if_modified(state, console_set_text) == EDITOR_THEME_ERROR) {
+        Editor_Theme_Status theme_status = editor_theme_update_if_modified(state, console_set_text);
+        if (theme_status == EDITOR_THEME_CHANGED_ERROR) {
             state->state = STATE_EDITOR_THEME_ERROR;
         }
     } break;
     case STATE_EDITOR_THEME_ERROR: {
         editor_render_state_write(state);
         console_render(state);
-        if (editor_theme_update_if_modified(state, console_set_text) == EDITOR_THEME_OK) {
+        Editor_Theme_Status theme_status = editor_theme_update_if_modified(state, console_set_text);
+        if (theme_status == EDITOR_THEME_CHANGED_OK) {
             state->state = STATE_EDITOR;
         }
     } break;

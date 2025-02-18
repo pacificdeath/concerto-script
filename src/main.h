@@ -73,9 +73,9 @@ typedef struct Tone {
 } Tone;
 
 typedef enum Editor_Theme_Status {
-    EDITOR_THEME_OK,
-    EDITOR_THEME_ERROR,
-    EDITOR_THEME_NO_CHANGES,
+    EDITOR_THEME_UNCHANGED,
+    EDITOR_THEME_CHANGED_OK,
+    EDITOR_THEME_CHANGED_ERROR,
 } Editor_Theme_Status;
 
 typedef struct Editor_Theme {
