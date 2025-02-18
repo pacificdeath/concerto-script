@@ -159,7 +159,7 @@ static void editor_render_base(State *state, float line_height, float char_width
 
     char current_word[EDITOR_LINE_MAX_LENGTH];
 
-    for (int i = 0; i < EDITOR_MAX_VISUAL_LINES; i++) {
+    for (int i = 0; i < e->visible_lines; i++) {
         int line_idx = e->visual_vertical_offset + i;
 
         if (line_idx >= e->line_count) {
@@ -364,7 +364,7 @@ void editor_render_state_play(State *state) {
         return;
     }
 
-    int middle_line = EDITOR_MAX_VISUAL_LINES / 2;
+    int middle_line = e->visible_lines / 2;
 
     float rec_line_size = 5.0f;
     Rectangle rec;

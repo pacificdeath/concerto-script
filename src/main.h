@@ -7,8 +7,11 @@
 #include "../raylib-5.0_win64_mingw-w64/include/raylib.h"
 #include "windows_wrapper.h"
 
-#define WINDOW_BASE_WIDTH 1500
-#define WINDOW_BASE_HEIGHT 1000
+#define WINDOW_INIT_WIDTH 1500
+#define WINDOW_INIT_HEIGHT 1000
+
+#define WINDOW_MIN_WIDTH 600
+#define WINDOW_MIN_HEIGHT 400
 
 #define THEMES_DIRECTORY "themes"
 #define THEME_DEFAULT THEMES_DIRECTORY"/default"
@@ -23,7 +26,6 @@
 #define SILENCE (MAX_NOTE + 1)
 #define COMMENT_CHAR '!'
 
-#define EDITOR_MAX_VISUAL_LINES 30
 #define EDITOR_LINE_CAPACITY 256
 #define EDITOR_LINE_MAX_LENGTH 64
 #define EDITOR_LINE_NUMBER_PADDING 5
@@ -134,7 +136,9 @@ typedef struct Editor {
     int line_count;
     char lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
 
-    float size_multiplier;
+    float visible_lines;
+
+    float text_size;
 
     Editor_Coord cursor;
     int selection_x;
@@ -374,15 +378,6 @@ typedef struct State {
     Synthesizer_Sound *current_sound;
     float sound_time;
 } State;
-
-inline static void resize_window(State *state, float multiplier) {
-    state->window_width = WINDOW_BASE_WIDTH * multiplier;
-    state->window_height = WINDOW_BASE_HEIGHT * multiplier;
-    SetWindowSize(
-        state->window_width,
-        state->window_height
-    );
-}
 
 inline static bool is_alphabetic(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');

@@ -13,6 +13,12 @@
 #include "editor_renderer.c"
 #include "console.c"
 
+void editor_on_window_resize(State *state) {
+    Editor *e = &state->editor;
+    const float c = 30.0f;
+    e->visible_lines = (float)state->window_height / e->text_size / c;
+}
+
 void editor_init(State *state, char *filename) {
     Editor *e = &state->editor;
     e->font = LoadFont("Consolas.ttf");
@@ -22,10 +28,11 @@ void editor_init(State *state, char *filename) {
         state->state = STATE_EDITOR_THEME_ERROR;
     }
     e->line_count = 1;
-    e->size_multiplier = 1.0f;
+    e->text_size = 1.0f;
     e->autoclick_key = KEY_NULL;
     e->finder_match_idx = -1;
     e->console_highlight_idx = -1;
+    editor_on_window_resize(state);
     editor_load_program(state, filename);
 }
 
@@ -45,17 +52,17 @@ Big_State editor_input(State *state) {
         }
 
         if (IsKeyPressed(KEY_KP_ADD)) {
-            e->size_multiplier += incr;
-            if (e->size_multiplier > max_size) {
-                e->size_multiplier = max_size;
+            e->text_size += incr;
+            if (e->text_size > max_size) {
+                e->text_size = max_size;
             }
-            resize_window(state, e->size_multiplier);
+            editor_on_window_resize(state);
         } else if (IsKeyPressed(KEY_KP_SUBTRACT)) {
-            e->size_multiplier -= incr;
-            if (e->size_multiplier < min_size) {
-                e->size_multiplier = min_size;
+            e->text_size -= incr;
+            if (e->text_size < min_size) {
+                e->text_size = min_size;
             }
-            resize_window(state, e->size_multiplier);
+            editor_on_window_resize(state);
         }
     }
 

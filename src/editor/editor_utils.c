@@ -9,7 +9,7 @@ static void console_get_highlighted_text(State *state, char *buffer);
 static void register_undo(State *state, Editor_Action_Type type, Editor_Coord coord, void *data);
 
 inline static int editor_line_height(State *state) {
-    return state->window_height / EDITOR_MAX_VISUAL_LINES;
+    return state->window_height / state->editor.visible_lines;
 }
 
 inline static int editor_char_width(int line_height) {
@@ -226,8 +226,8 @@ static char *copy_editor_string(State *state, Editor_Coord start, Editor_Coord e
 
 static void snap_visual_vertical_offset_to_cursor(State *state) {
     Editor *e = &state->editor;
-    if (e->cursor.y > (e->visual_vertical_offset + EDITOR_MAX_VISUAL_LINES - 1)) {
-        e->visual_vertical_offset = e->cursor.y - EDITOR_MAX_VISUAL_LINES + 1;
+    if (e->cursor.y > (e->visual_vertical_offset + e->visible_lines - 1)) {
+        e->visual_vertical_offset = e->cursor.y - e->visible_lines + 1;
     } else if (e->cursor.y < e->visual_vertical_offset) {
         e->visual_vertical_offset = e->cursor.y;
     }
@@ -235,7 +235,7 @@ static void snap_visual_vertical_offset_to_cursor(State *state) {
 
 static void center_visual_vertical_offset_around_cursor(State *state) {
     Editor *e = &state->editor;
-    int middle_line = EDITOR_MAX_VISUAL_LINES / 2;
+    int middle_line = e->visible_lines / 2;
     if (e->cursor.y > middle_line) {
         e->visual_vertical_offset = e->cursor.y - middle_line;
     } else {

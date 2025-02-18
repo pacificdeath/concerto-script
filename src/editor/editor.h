@@ -3,6 +3,7 @@
 
 #include "../main.h"
 
+void editor_on_window_resize(State *state);
 void editor_init(State *state, char *filename);
 Big_State editor_input(State *state);
 void editor_error_display(State *state, char *error_message);
