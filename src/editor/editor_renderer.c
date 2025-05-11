@@ -362,7 +362,7 @@ void editor_render_state_play(State *state) {
         return;
     }
 
-    int middle_line = e->visible_lines / 2;
+    int middle_line = editor_window_line_count(state) / 2;
 
     float rec_line_size = 5.0f;
     Rectangle rec;
