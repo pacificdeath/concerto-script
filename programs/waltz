@@ -1,0 +1,21 @@
+bpm 180
+
+define chord35(
+    chord(e g)
+    play8triplet
+    wait8triplet
+    play4triplet
+)
+
+forever (
+    c play4triplet
+    chord35
+    g3 play4triplet
+    chord35
+    c play4triplet
+    chord35
+    g3 play4triplet
+    a3 play4triplet
+    b3 play4triplet
+)
+
