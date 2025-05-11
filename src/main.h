@@ -2,7 +2,12 @@
 #define MAIN_H
 
 #include <stdlib.h>
-#include <stdint.h>
+
+typedef int unsigned uint;
+typedef short int16;
+typedef short unsigned uint16;
+typedef char int8;
+typedef char unsigned uint8;
 
 #include "../raylib-5.0_win64_mingw-w64/include/raylib.h"
 #include "windows_wrapper.h"
@@ -79,17 +84,17 @@ typedef enum Waveform {
 } Waveform;
 
 typedef struct Chord {
-    int8_t size;
-    int8_t notes[OCTAVE];
+    int8 size;
+    int8 notes[OCTAVE];
     float frequencies[OCTAVE];
 } Chord;
 
 typedef struct Tone {
     Waveform waveform;
-    uint32_t token_idx;
-    uint16_t line_idx;
-    uint16_t char_idx;
-    uint16_t char_count;
+    uint token_idx;
+    uint16 line_idx;
+    uint16 char_idx;
+    uint16 char_count;
     Chord chord;
     float duration;
 } Tone;
@@ -343,7 +348,7 @@ typedef struct Compiler {
 } Compiler;
 
 typedef struct Synthesizer_Sound {
-    int16_t *raw_data;
+    int16 *raw_data;
     Tone tone;
     Sound sound;
 } Synthesizer_Sound;

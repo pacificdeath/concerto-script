@@ -159,7 +159,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
         }
         for (j = 0; j < 4; j++) {
             char c = data[i+j];
-            uint8_t *byte_ptr;
+            uint8 *byte_ptr;
             switch (j) {
             case 0: byte_ptr = &(color->r); break;
             case 1: byte_ptr = &(color->g); break;
@@ -173,7 +173,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
             }
             }
 
-            uint8_t nibble;
+            uint8 nibble;
             bool done = false;
             switch (c) {
             case '0':
@@ -238,7 +238,7 @@ Editor_Theme_Status editor_theme_update(State *state, void (*on_error)(State*,ch
             if (done) {
                 break;
             }
-            uint8_t byte = (nibble * 16) + nibble;
+            uint8 byte = (nibble * 16) + nibble;
             *byte_ptr = byte;
         }
         i += j + 1;

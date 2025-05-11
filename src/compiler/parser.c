@@ -26,7 +26,7 @@ static void parser_run(Compiler *compiler) {
 
     compiler->tone_amount = 0;
 
-    uint32_t tone_idx = 0;
+    uint tone_idx = 0;
     bool semi_flag = false;
 
     for (int i = parser->token_idx; i < compiler->token_amount; i++) {

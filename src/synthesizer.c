@@ -59,53 +59,54 @@ void synthesizer_back_buffer_generate_data(Synthesizer *synthesizer, Compiler *c
 
     back_buffer->sound_count = 0;
 
-    const int sample_rate = 44100;
-    const int channels = 2;
-    const int sample_size = 16; // 16 bits per sample
-    int bytes_per_sample = sample_size / 8;
+    const uint sample_rate = 44100;
+    const uint channels = 2;
+    const uint sample_size = 16; // 16 bits per sample
+    const uint bytes_per_sample = sample_size / 8;
 
     for (int i = 0; i < SYNTHESIZER_TONE_CAPACITY; i++) {
-        int frame_count = back_buffer->sounds[i].tone.duration * sample_rate;
-        int data_size = frame_count * channels * bytes_per_sample;
-        int16_t *audio_data = (int16_t *)dyn_mem_alloc(data_size);
+        uint frame_count = (uint)(back_buffer->sounds[i].tone.duration * (float)sample_rate);
+        uint data_size = frame_count * channels * bytes_per_sample;
+        int16 *audio_data = (int16 *)dyn_mem_alloc(data_size);
         if (audio_data == NULL) {
             thread_error();
         }
         bool is_chord_silent = (back_buffer->sounds[i].tone.chord.size <= 0);
         if (is_chord_silent) {
-            for (int frame = 0; frame < frame_count; frame += 1) {
-                for (int k = 0; k < channels; k++) {
+            for (uint frame = 0; frame < frame_count; frame += 1) {
+                for (uint k = 0; k < channels; k++) {
                     audio_data[frame * channels + k] = 0;
                 }
             }
         } else {
-            for (int frame = 0; frame < frame_count; frame += 1) {
-                float t = (float)frame / (float)(frame_count - 1); // Normalized time (0.0 to 1.0)
-
+            for (uint frame = 0; frame < frame_count; frame += 1) {
                 Chord *chord = &back_buffer->sounds[i].tone.chord;
                 float samples[chord->size];
                 switch (back_buffer->sounds[i].tone.waveform) {
+                case WAVEFORM_NONE: {
+                    ASSERT(false);
+                } break;
                 case WAVEFORM_SINE: {
                     for (int j = 0; j < chord->size; j++) {
-                        float x = chord->frequencies[j] * frame / sample_rate;
+                        float x = chord->frequencies[j] * (float)frame / (float)sample_rate;
                         samples[j] = sinf(2.0f * PI * x);
                     }
                 } break;
                 case WAVEFORM_TRIANGLE: {
                     for (int j = 0; j < chord->size; j++) {
-                        float x = chord->frequencies[j] * frame / sample_rate;
+                        float x = chord->frequencies[j] * (float)frame / (float)sample_rate;
                         samples[j] = 4.0f * fabsf(x - floorf(x + 0.75f) + 0.25f) - 1.0f;
                     }
                 } break;
                 case WAVEFORM_SQUARE: {
                     for (int j = 0; j < chord->size; j++) {
-                        float x = chord->frequencies[j] * frame / sample_rate;
+                        float x = chord->frequencies[j] * (float)frame / (float)sample_rate;
                         samples[j] = 4.0f * floorf(x) - 2.0f * floorf(2.0f * x) + 1.0f;
                     }
                 } break;
                 case WAVEFORM_SAWTOOTH: {
                     for (int j = 0; j < chord->size; j++) {
-                        float x = chord->frequencies[j] * frame / sample_rate;
+                        float x = chord->frequencies[j] * (float)frame / (float)sample_rate;
                         samples[j] = 2.0f * (x - floorf(x + 0.5f));
                     }
                 } break;
@@ -128,7 +129,7 @@ void synthesizer_back_buffer_generate_data(Synthesizer *synthesizer, Compiler *c
                 }
                 combined_sample /= chord->size;
 
-                for (int k = 0; k < channels; k++) {
+                for (uint k = 0; k < channels; k++) {
                     audio_data[frame * channels + k] = (int16_t)(combined_sample * 32767); // 32767 is the max value for 16-bit audio
                 }
             }
