@@ -8,12 +8,17 @@ static void console_set_text(State *state, char *text);
 static void console_get_highlighted_text(State *state, char *buffer);
 static void register_undo(State *state, Editor_Action_Type type, Editor_Coord coord, void *data);
 
-inline static int editor_line_height(State *state) {
-    return state->window_height / state->editor.visible_lines;
+inline static float editor_line_height(State *state) {
+    int monitor = GetCurrentMonitor();
+    return (float)GetMonitorHeight(monitor) / (float)state->editor.visible_lines;
 }
 
-inline static int editor_char_width(int line_height) {
-    return line_height * 0.6;
+inline static int editor_window_line_count(State *state) {
+    return GetScreenHeight() / editor_line_height(state);
+}
+
+inline static int editor_char_width(float line_height) {
+    return line_height * 0.6f;
 }
 
 static char keyboard_key_to_char(State *state, KeyboardKey key, bool shift) {
@@ -80,38 +85,46 @@ static char keyboard_key_to_char(State *state, KeyboardKey key, bool shift) {
 static void add_editor_line(State *state, Editor_Coord coord) {
     Editor *e = &state->editor;
     e->line_count += 1;
-    char cut_line[EDITOR_LINE_MAX_LENGTH];
     {
         int i;
         for (i = 0; e->lines[coord.y][coord.x + i] != '\0'; i++) {
-            cut_line[i] = e->lines[coord.y][coord.x + i];
+            ASSERT(i < EDITOR_LINE_MAX_LENGTH);
+            e->whatever_buffer[i] = e->lines[coord.y][coord.x + i];
         }
-        cut_line[i] = '\0';
+        ASSERT(i < EDITOR_LINE_MAX_LENGTH);
+        e->whatever_buffer[i] = '\0';
     }
+    ASSERT(coord.y < EDITOR_LINE_CAPACITY);
+    ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
     e->lines[coord.y][coord.x] = '\0';
     for (int i = e->line_count - 1; i > (coord.y + 1); i--) {
+
+        ASSERT(i < EDITOR_LINE_MAX_LENGTH);
+        ASSERT((i - 1) >= 0);
+
         strcpy(e->lines[i], e->lines[i - 1]);
     }
     coord.y++;
-    strcpy(e->lines[coord.y], cut_line);
+    ASSERT(coord.y < EDITOR_LINE_CAPACITY);
+    strcpy(e->lines[coord.y], e->whatever_buffer);
 }
 
 static void delete_editor_line(State *state, int line_idx) {
     Editor *e = &state->editor;
     int line_len = TextLength(e->lines[line_idx]);
     int prev_line_len = TextLength(e->lines[line_idx - 1]);
-    if ((line_len + prev_line_len) < EDITOR_LINE_MAX_LENGTH - 1) {
-        strcat(e->lines[line_idx - 1], e->lines[line_idx]);
-        for (int i = line_idx; i < e->line_count; i++) {
-            strcpy(e->lines[i], e->lines[i + 1]);
-        }
-        e->line_count--;
-    } else {
-        //TODO
+    ASSERT((line_len + prev_line_len) < EDITOR_LINE_MAX_LENGTH - 1);
+    strcat(e->lines[line_idx - 1], e->lines[line_idx]);
+    for (int i = line_idx; i < e->line_count; i++) {
+        ASSERT((i + 1) < EDITOR_LINE_CAPACITY);
+        strcpy(e->lines[i], e->lines[i + 1]);
     }
+    e->line_count--;
 }
 
 static void add_editor_char(State *state, char character, Editor_Coord coord) {
+    ASSERT(coord.y < EDITOR_LINE_CAPACITY);
+    ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
     Editor *e = &state->editor;
     if (TextLength(e->lines[coord.y]) > EDITOR_LINE_MAX_LENGTH - 2) {
         return;
@@ -120,6 +133,7 @@ static void add_editor_char(State *state, char character, Editor_Coord coord) {
     e->lines[coord.y][coord.x] = character;
     coord.x++;
     while (true) {
+        ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
         char tmp = e->lines[coord.y][coord.x];
         e->lines[coord.y][coord.x] = next;
         next = tmp;
@@ -128,13 +142,18 @@ static void add_editor_char(State *state, char character, Editor_Coord coord) {
         }
         coord.x++;
     }
-    e->lines[coord.y][coord.x + 1] = '\0';
+    coord.x++;
+    ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
+    e->lines[coord.y][coord.x] = '\0';
 }
 
 static void delete_editor_char(State *state, Editor_Coord coord) {
+    ASSERT(coord.y < EDITOR_LINE_CAPACITY);
+    ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
     Editor *e = &state->editor;
     int i;
     for (i = coord.x; e->lines[coord.y][i] != '\0'; i++) {
+        ASSERT((i + 1) < EDITOR_LINE_MAX_LENGTH);
         e->lines[coord.y][i] = e->lines[coord.y][i + 1];
     }
     e->lines[coord.y][i] = '\0';
@@ -164,19 +183,26 @@ static Editor_Coord add_editor_string(State *state, char *string, Editor_Coord c
 }
 
 static void delete_editor_string(State *state, Editor_Coord start, Editor_Coord end) {
+    ASSERT(start.y < EDITOR_LINE_CAPACITY);
+    ASSERT(start.x < EDITOR_LINE_MAX_LENGTH);
+    ASSERT(end.y < EDITOR_LINE_CAPACITY);
+    ASSERT(end.x < EDITOR_LINE_MAX_LENGTH);
     Editor *e = &state->editor;
-    char buffer[2048];
     if (start.y < end.y) {
         e->lines[start.y][start.x] = '\0';
         int i;
         for (i = 0; i < strlen(e->lines[end.y]) - end.x; i++) {
-            buffer[i] = e->lines[end.y][i + end.x];
+            ASSERT(i < EDITOR_WHATEVER_BUFFER_LENGTH);
+            e->whatever_buffer[i] = e->lines[end.y][i + end.x];
         }
-        buffer[i] = '\0';
-        strcat(e->lines[start.y], buffer);
+        ASSERT(i < EDITOR_WHATEVER_BUFFER_LENGTH);
+        e->whatever_buffer[i] = '\0';
+        strcat(e->lines[start.y], e->whatever_buffer);
         int delete_amount = end.y - start.y;
         for (i = start.y + 1; i < e->line_count; i++) {
+            ASSERT(i < EDITOR_LINE_CAPACITY);
             int copy_line = i + delete_amount;
+            ASSERT(copy_line < EDITOR_LINE_CAPACITY);
             if (copy_line >= e->line_count) {
                 e->lines[i][0] = '\0';
             } else {
@@ -184,14 +210,19 @@ static void delete_editor_string(State *state, Editor_Coord start, Editor_Coord 
             }
         }
         e->line_count -= delete_amount;
+        ASSERT(e->line_count > 0);
     } else {
         int i;
         for (i = 0; i < strlen(e->lines[start.y]) - end.x; i++) {
-            buffer[i] = e->lines[start.y][i + end.x];
+            ASSERT(i < EDITOR_WHATEVER_BUFFER_LENGTH);
+            ASSERT((i + end.x) < EDITOR_LINE_MAX_LENGTH);
+            e->whatever_buffer[i] = e->lines[start.y][i + end.x];
         }
-        buffer[i] = '\0';
+        ASSERT(i < EDITOR_WHATEVER_BUFFER_LENGTH);
+        e->whatever_buffer[i] = '\0';
         e->lines[start.y][start.x] = '\0';
-        strcat(e->lines[start.y], buffer);
+        ASSERT((strlen(e->lines[start.y]) + strlen(e->whatever_buffer)) < EDITOR_LINE_MAX_LENGTH);
+        strcat(e->lines[start.y], e->whatever_buffer);
     }
 }
 
@@ -226,8 +257,9 @@ static char *copy_editor_string(State *state, Editor_Coord start, Editor_Coord e
 
 static void snap_visual_vertical_offset_to_cursor(State *state) {
     Editor *e = &state->editor;
-    if (e->cursor.y > (e->visual_vertical_offset + e->visible_lines - 1)) {
-        e->visual_vertical_offset = e->cursor.y - e->visible_lines + 1;
+    float window_line_count = editor_window_line_count(state);
+    if (e->cursor.y > (e->visual_vertical_offset + window_line_count - 1)) {
+        e->visual_vertical_offset = e->cursor.y - window_line_count + 1;
     } else if (e->cursor.y < e->visual_vertical_offset) {
         e->visual_vertical_offset = e->cursor.y;
     }

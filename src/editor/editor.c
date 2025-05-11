@@ -13,12 +13,6 @@
 #include "editor_renderer.c"
 #include "console.c"
 
-void editor_on_window_resize(State *state) {
-    Editor *e = &state->editor;
-    const float c = 30.0f;
-    e->visible_lines = (float)state->window_height / e->text_size / c;
-}
-
 void editor_init(State *state, char *filename) {
     Editor *e = &state->editor;
     e->font = LoadFont("Consolas.ttf");
@@ -28,11 +22,10 @@ void editor_init(State *state, char *filename) {
         state->state = STATE_EDITOR_THEME_ERROR;
     }
     e->line_count = 1;
-    e->text_size = 1.0f;
     e->autoclick_key = KEY_NULL;
     e->finder_match_idx = -1;
     e->console_highlight_idx = -1;
-    editor_on_window_resize(state);
+    e->visible_lines = EDITOR_DEFAULT_VISIBLE_LINES;
     editor_load_program(state, filename);
 }
 
@@ -41,28 +34,31 @@ Big_State editor_input(State *state) {
 
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    float scroll = GetMouseWheelMove();
 
     if (ctrl) {
-        const float min_size = 0.5f;
-        const float max_size = 2.0f;
-        const float incr = 0.1f;
-
         if (IsKeyPressed(KEY_Q)) {
             return STATE_QUIT;
         }
 
-        if (IsKeyPressed(KEY_KP_ADD)) {
-            e->text_size += incr;
-            if (e->text_size > max_size) {
-                e->text_size = max_size;
+        if (auto_click(state, KEY_KP_ADD)) {
+            e->visible_lines -= EDITOR_VISIBLE_LINES_CHANGE;
+        } else if (auto_click(state, KEY_KP_SUBTRACT)) {
+            e->visible_lines += EDITOR_VISIBLE_LINES_CHANGE;
+        } else {
+            if (scroll > 0.0f) {
+                e->visible_lines -= EDITOR_VISIBLE_LINES_CHANGE;
+            } else if (scroll < 0.0f) {
+                e->visible_lines += EDITOR_VISIBLE_LINES_CHANGE;
             }
-            editor_on_window_resize(state);
-        } else if (IsKeyPressed(KEY_KP_SUBTRACT)) {
-            e->text_size -= incr;
-            if (e->text_size < min_size) {
-                e->text_size = min_size;
-            }
-            editor_on_window_resize(state);
+        }
+
+        scroll = 0.0f;
+        if (e->visible_lines < EDITOR_MIN_VISIBLE_LINES) {
+            e->visible_lines = EDITOR_MIN_VISIBLE_LINES;
+        }
+        if (e->visible_lines > EDITOR_MAX_VISIBLE_LINES) {
+            e->visible_lines = EDITOR_MAX_VISIBLE_LINES;
         }
     }
 
@@ -111,7 +107,6 @@ Big_State editor_input(State *state) {
             go_to_definition(state);
             break;
         }
-        float scroll = GetMouseWheelMove();
 
         if (scroll != 0.0f) {
             e->visual_vertical_offset -= (scroll * EDITOR_SCROLL_MULTIPLIER);
@@ -126,17 +121,17 @@ Big_State editor_input(State *state) {
             Vector2 mouse_pos = GetMousePosition();
             if (mouse_pos.x < 0 ||
                 mouse_pos.y < 0 ||
-                mouse_pos.x > state->window_width ||
-                mouse_pos.x > state->window_height) {
+                mouse_pos.x > GetScreenWidth() ||
+                mouse_pos.x > GetScreenHeight()) {
                 break;
             }
-            int line_height = editor_line_height(state);
+            float line_height = editor_line_height(state);
             int requested_line = (int)(mouse_pos.y / line_height);
             requested_line += e->visual_vertical_offset;
             if (requested_line >= e->line_count) {
                 requested_line = e->line_count - 1;
             }
-            int char_width = editor_char_width(line_height);
+            float char_width = editor_char_width(line_height);
             int requested_char = roundf((mouse_pos.x / char_width) - EDITOR_LINE_NUMBER_PADDING);
             int len = strlen(e->lines[requested_line]);
             if (requested_char < 0) {

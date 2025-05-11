@@ -40,9 +40,6 @@ void compiler_thread(void *data) {
 int main(int argc, char **argv) {
     State *state = (State *)dyn_mem_alloc_zero(sizeof(State));
 
-    state->window_width = WINDOW_INIT_WIDTH;
-    state->window_height = WINDOW_INIT_HEIGHT;
-
     SetTraceLogLevel(
         #ifdef DEBUG
             LOG_DEBUG
@@ -58,7 +55,7 @@ int main(int argc, char **argv) {
 
     InitAudioDevice();
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(state->window_width, state->window_height, "Concerto Script");
+    InitWindow(WINDOW_INIT_WIDTH, WINDOW_INIT_HEIGHT, "Concerto Script");
     SetWindowMinSize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT);
     SetExitKey(KEY_NULL);
     SetTargetFPS(60);
@@ -72,12 +69,6 @@ int main(int argc, char **argv) {
     bool is_playing = false;
 
     while (!WindowShouldClose()) {
-        if (IsWindowResized()) {
-            state->window_width = GetScreenWidth();
-            state->window_height = GetScreenHeight();
-            editor_on_window_resize(state);
-        }
-
         state->keyboard_layout = get_keyboard_layout();
         state->delta_time = GetFrameTime();
         state->state = editor_input(state);
@@ -163,3 +154,4 @@ int main(int argc, char **argv) {
     editor_free(state);
     dyn_mem_release(state);
 }
+

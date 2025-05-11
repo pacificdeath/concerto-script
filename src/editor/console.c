@@ -54,36 +54,39 @@ void console_get_highlighted_text(State *state, char *buffer) {
 void console_render(State *state) {
     Editor *e = &state->editor;
 
+    const int window_width = GetScreenWidth();
+    const int window_height = GetScreenHeight();
+
     Rectangle rec;
 
-    int line_height = editor_line_height(state);
-    int char_width = editor_char_width(line_height);
+    float line_height = editor_line_height(state);
+    float char_width = editor_char_width(line_height);
 
-    int rec_line_size = 5;
-    int padding = rec_line_size * 2.0f;
+    float rec_line_size = 5;
+    float padding = rec_line_size * 2.0f;
 
     Color fg_color;
 
     switch (state->state) {
     default:
     case STATE_EDITOR_FILE_EXPLORER_PROGRAMS: {
-        rec.x = (state->window_width * 0.1f) - padding;
-        rec.y = (state->window_height * 0.1f) - padding;
-        rec.width = (state->window_width * 0.8f) + (padding * 2.0f);
+        rec.x = (window_width * 0.1f) - padding;
+        rec.y = (window_height * 0.1f) - padding;
+        rec.width = (window_width * 0.8f) + (padding * 2.0f);
         fg_color = e->theme.console_foreground;
     } break;
     case STATE_EDITOR_THEME_ERROR:
     case STATE_EDITOR_SAVE_FILE_ERROR:
     case STATE_COMPILATION_ERROR: {
-        rec.x = (state->window_width * 0.25f) - padding;
-        rec.y = (state->window_height * 0.25f) - padding;
-        rec.width = (state->window_width * 0.5f) + (padding * 2.0f);
+        rec.x = (window_width * 0.25f) - padding;
+        rec.y = (window_height * 0.25f) - padding;
+        rec.width = (window_width * 0.5f) + (padding * 2.0f);
         fg_color = e->theme.console_foreground_error;
     } break;
     case STATE_EDITOR_FIND_TEXT: {
         int width = char_width * (EDITOR_FINDER_BUFFER_MAX + 1);
-        rec.x = (state->window_width * 0.5f) - (width * 0.5f) - padding;
-        rec.y = (state->window_height * 0.7f) - padding;
+        rec.x = (window_width * 0.5f) - (width * 0.5f) - padding;
+        rec.y = (window_height * 0.7f) - padding;
         rec.width = width + (padding * 2.0f);
         fg_color = e->theme.console_foreground;
     } break;

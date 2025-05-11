@@ -7,6 +7,20 @@
 #include "../raylib-5.0_win64_mingw-w64/include/raylib.h"
 #include "windows_wrapper.h"
 
+#ifdef DEBUG
+    #define ASSERT(condition)\
+        do {\
+            if (!(condition)) {\
+                printf("You are a horrible person\n -> %s:%i", __FILE__, __LINE__);\
+                exit(1);\
+            }\
+        } while (0)
+#else
+    #define ASSERT(condition)
+#endif
+
+#define CLAMP(value, min, max) (value < min ? min : (value > max ? max : value))
+
 #define WINDOW_INIT_WIDTH 1500
 #define WINDOW_INIT_HEIGHT 1000
 
@@ -35,12 +49,18 @@
 #define EDITOR_CURSOR_WIDTH 3
 #define EDITOR_CURSOR_ANIMATION_SPEED 10.0f
 #define EDITOR_SCROLL_MULTIPLIER 3
+#define EDITOR_CTRL_SCROLL_MULTIPLIER 0.1F
 #define EDITOR_FILE_SEARCH_BUFFER_MAX 32
 #define EDITOR_FILENAME_MAX_LENGTH 128
 #define EDITOR_FILENAMES_MAX_AMOUNT 10
 #define EDITOR_FINDER_BUFFER_MAX 32
 #define EDITOR_GO_TO_LINE_BUFFER_MAX 5
 #define EDITOR_UNDO_BUFFER_MAX 64
+#define EDITOR_WHATEVER_BUFFER_LENGTH (EDITOR_LINE_MAX_LENGTH * 2)
+#define EDITOR_DEFAULT_VISIBLE_LINES 50
+#define EDITOR_MIN_VISIBLE_LINES 10
+#define EDITOR_MAX_VISIBLE_LINES 200
+#define EDITOR_VISIBLE_LINES_CHANGE 4
 
 #define CONSOLE_LINE_CAPACITY 32
 #define CONSOLE_LINE_MAX_LENGTH 255
@@ -136,9 +156,7 @@ typedef struct Editor {
     int line_count;
     char lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
 
-    float visible_lines;
-
-    float text_size;
+    int visible_lines;
 
     Editor_Coord cursor;
     int selection_x;
@@ -175,6 +193,8 @@ typedef struct Editor {
     char console_text[CONSOLE_LINE_CAPACITY][CONSOLE_LINE_MAX_LENGTH];
     int console_line_count;
     int console_highlight_idx;
+
+    char whatever_buffer[EDITOR_WHATEVER_BUFFER_LENGTH];
 } Editor;
 
 typedef struct Editor_Selection_Data {
@@ -187,8 +207,8 @@ typedef struct Editor_Cursor_Render_Data {
     int x;
     int line_number_offset;
     int visual_vertical_offset;
-    int char_width;
-    int line_height;
+    float char_width;
+    float line_height;
     float alpha;
 } Editor_Cursor_Render_Data;
 
@@ -198,8 +218,8 @@ typedef struct Editor_Selection_Render_Data {
     int visual_vertical_offset;
     int start_x;
     int end_x;
-    int char_width;
-    int line_height;
+    float char_width;
+    float line_height;
 } Editor_Selection_Render_Data;
 
 typedef enum Token_Type {
@@ -367,8 +387,6 @@ typedef enum Big_State {
 } Big_State;
 
 typedef struct State {
-    int window_width;
-    int window_height;
     Keyboard_Layout keyboard_layout;
     Big_State state;
     float delta_time;

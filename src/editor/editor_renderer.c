@@ -1,8 +1,6 @@
 #include "../main.h"
 #include "editor_utils.c"
 
-#define CLAMP(value, min, max) (value < min ? min : (value > max ? max : value))
-
 static void render_cursor(Editor_Cursor_Render_Data data, Color color) {
     Vector2 start = {
         .x = data.line_number_offset + (data.x * data.char_width),
@@ -139,7 +137,7 @@ static bool is_note_at_coord(State *state, Editor_Coord coord) {
         default: {
             if (offset_char >= '0' && offset_char <= '8') {
                 has_explicit_octave = true;
-            } else if (is_alphabetic(offset_char)) {
+            } else if (is_alphabetic(offset_char) || offset_char == '_') {
                 return false;
             }
         } break;
@@ -158,8 +156,9 @@ static void editor_render_base(State *state, float line_height, float char_width
     char line_number_str[EDITOR_LINE_NUMBER_PADDING];
 
     char current_word[EDITOR_LINE_MAX_LENGTH];
+    int window_line_count = editor_window_line_count(state);
 
-    for (int i = 0; i < e->visible_lines; i++) {
+    for (int i = 0; i < window_line_count; i++) {
         int line_idx = e->visual_vertical_offset + i;
 
         if (line_idx >= e->line_count) {
@@ -282,10 +281,9 @@ static void editor_render_base(State *state, float line_height, float char_width
 static void editor_render_state_write(State *state) {
     Editor *e = &state->editor;
 
-    int line_height = editor_line_height(state);
-    int char_width = editor_char_width(line_height);
-
-    int line_number_padding = char_width * EDITOR_LINE_NUMBER_PADDING;
+    float line_height = editor_line_height(state);
+    float char_width = editor_char_width(line_height);
+    float line_number_padding = char_width * EDITOR_LINE_NUMBER_PADDING;
 
     if (cursor_selection_active(state)) {
         Editor_Selection_Data selection_data = get_cursor_selection_data(state);
@@ -342,10 +340,10 @@ static void editor_render_state_write(State *state) {
 }
 
 void editor_render_state_wait_to_play(State *state) {
-    int line_height = editor_line_height(state);
-    int char_width = editor_char_width(line_height);
+    float line_height = editor_line_height(state);
+    float char_width = editor_char_width(line_height);
 
-    int line_number_padding = char_width * EDITOR_LINE_NUMBER_PADDING;
+    float line_number_padding = char_width * EDITOR_LINE_NUMBER_PADDING;
 
     editor_render_base(state, line_height, char_width, line_number_padding);
 }
@@ -353,10 +351,10 @@ void editor_render_state_wait_to_play(State *state) {
 void editor_render_state_play(State *state) {
     Editor *e = &state->editor;
 
-    int line_height = editor_line_height(state);
-    int char_width = editor_char_width(line_height);
+    float line_height = editor_line_height(state);
+    float char_width = editor_char_width(line_height);
 
-    int line_number_padding = char_width * EDITOR_LINE_NUMBER_PADDING;
+    float line_number_padding = char_width * EDITOR_LINE_NUMBER_PADDING;
 
     editor_render_base(state, line_height, char_width, line_number_padding);
 
