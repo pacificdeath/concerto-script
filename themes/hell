@@ -1,0 +1,17 @@
+background : 500
+foreground : a00
+play : ff0
+wait : f80
+keyword : f00
+note : f00
+paren : a00
+space : a00
+comment : a00
+linenumber : a00
+cursor : ff0
+selection : 700
+console_background : 200
+console_foreground : f00
+console_foreground_error : f00
+console_highlight : 400
+play_cursor : ff0

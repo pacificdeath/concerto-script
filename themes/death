@@ -1,0 +1,17 @@
+background : 000
+foreground : fff
+play : f00
+wait : 800
+keyword : 888
+note : 888
+paren : 444
+space : 444
+comment : 444
+linenumber : 444
+cursor : f00
+selection : 222
+console_background : 000
+console_foreground : f00
+console_foreground_error : f00
+console_highlight : 400
+play_cursor : fff
