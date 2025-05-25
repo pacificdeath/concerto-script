@@ -59,32 +59,34 @@ void synthesizer_back_buffer_generate_data(Synthesizer *synthesizer, Compiler *c
 
     back_buffer->sound_count = 0;
 
-    const uint sample_rate = 44100;
-    const uint channels = 2;
-    const uint sample_size = 16; // 16 bits per sample
-    const uint bytes_per_sample = sample_size / 8;
+    const int sample_rate = 44100;
+    const int channels = 2;
+    const int sample_size = 16; // 16 bits per sample
+    const int bytes_per_sample = sample_size / 8;
 
     for (int i = 0; i < SYNTHESIZER_TONE_CAPACITY; i++) {
-        uint frame_count = (uint)(back_buffer->sounds[i].tone.duration * (float)sample_rate);
-        uint data_size = frame_count * channels * bytes_per_sample;
+        int frame_count = (int)(back_buffer->sounds[i].tone.duration * (float)sample_rate);
+        int data_size = frame_count * channels * bytes_per_sample;
         int16 *audio_data = (int16 *)dyn_mem_alloc(data_size);
         if (audio_data == NULL) {
             thread_error();
         }
         bool is_chord_silent = (back_buffer->sounds[i].tone.chord.size <= 0);
         if (is_chord_silent) {
-            for (uint frame = 0; frame < frame_count; frame += 1) {
-                for (uint k = 0; k < channels; k++) {
+            for (int frame = 0; frame < frame_count; frame += 1) {
+                for (int k = 0; k < channels; k++) {
                     audio_data[frame * channels + k] = 0;
                 }
             }
         } else {
-            for (uint frame = 0; frame < frame_count; frame += 1) {
+            for (int frame = 0; frame < frame_count; frame += 1) {
                 Chord *chord = &back_buffer->sounds[i].tone.chord;
                 float samples[chord->size];
                 switch (back_buffer->sounds[i].tone.waveform) {
                 case WAVEFORM_NONE: {
-                    ASSERT(false);
+                    for (int j = 0; j < chord->size; j++) {
+                        samples[j] = 0;
+                    }
                 } break;
                 case WAVEFORM_SINE: {
                     for (int j = 0; j < chord->size; j++) {
@@ -129,7 +131,7 @@ void synthesizer_back_buffer_generate_data(Synthesizer *synthesizer, Compiler *c
                 }
                 combined_sample /= chord->size;
 
-                for (uint k = 0; k < channels; k++) {
+                for (int k = 0; k < channels; k++) {
                     audio_data[frame * channels + k] = (int16_t)(combined_sample * 32767); // 32767 is the max value for 16-bit audio
                 }
             }

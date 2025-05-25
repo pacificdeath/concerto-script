@@ -70,7 +70,7 @@ static Compiler_Error_Address validator_run(Compiler *c) {
             }
             i += 2;
             Compiler_Error chord_error = NO_ERROR;
-            Chord chord = get_chord(c->token_amount, tokens, &i, &chord_error);
+            get_chord(c->token_amount, tokens, &i, &chord_error);
             if (chord_error != NO_ERROR) {
                 return validator_error(chord_error, i);
             }
@@ -81,7 +81,7 @@ static Compiler_Error_Address validator_run(Compiler *c) {
             }
             i += 2;
             Compiler_Error scale_error = NO_ERROR;
-            int scale = get_scale(c->token_amount, tokens, &i, &scale_error);
+            get_scale(c->token_amount, tokens, &i, &scale_error);
             if (scale_error != NO_ERROR) {
                 return validator_error(scale_error, i);
             }
@@ -124,7 +124,6 @@ static Compiler_Error_Address validator_run(Compiler *c) {
                 return validator_error(ERROR_EXPECTED_IDENTIFIER, i);
             }
             i++;
-            bool new_variable = true;
             int variable_idx = c->variable_count;
             for (int j = 0; j < c->variable_count; j++) {
                 if (strcmp(tokens[i].value.string, c->variables[j].ident) == 0) {

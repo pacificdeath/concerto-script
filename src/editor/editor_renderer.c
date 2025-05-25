@@ -4,7 +4,7 @@
 static void render_cursor(Editor_Cursor_Render_Data data, Color color) {
     Vector2 start = {
         .x = data.line_number_offset + (data.x * data.char_width),
-        .y = ((data.y - data.visual_vertical_offset) * data.line_height)
+        .y = (data.y * data.line_height)
     };
     Vector2 end = {
         .x = start.x,
@@ -14,37 +14,71 @@ static void render_cursor(Editor_Cursor_Render_Data data, Color color) {
     DrawLineEx(start, end, EDITOR_CURSOR_WIDTH, color);
 }
 
-static void render_selection(Editor_Selection_Render_Data data, Color color) {
-    DrawRectangle(
-        data.line_number_offset + (data.start_x * data.char_width),
-        ((data.line - data.visual_vertical_offset) * data.line_height),
-        ((data.end_x - data.start_x) * data.char_width),
-        data.line_height,
-        color
-    );
+static void render_cursor_line(State *state) {
+    Editor *e = &state->editor;
+
+    Editor_Coord wrapped_coord = editor_wrapped_coord(state, e->cursor);
+    int line_idx = e->cursor.y - e->visual_vertical_offset;
+
+    ASSERT(line_idx >= 0);
+    ASSERT(line_idx < e->wrap_line_count);
+
+    int base_wrapped_y = e->wrap_lines[line_idx].visual_idx;
+    int wrap_amount = e->wrap_lines[line_idx].wrap_amount;
+
+    Rectangle rec = {
+        .x = 0,
+        .y = base_wrapped_y * editor_line_height(state),
+        .width = GetScreenWidth(),
+        .height = (1 + wrap_amount) * editor_line_height(state),
+    };
+
+    DrawRectangleRec(rec, e->theme.cursor_line);
+}
+
+static void render_selection(State *state, Editor_Selection_Render_Data data) {
+    Editor *e = &state->editor;
+
+    Editor_Coord wrapped_selection_start = editor_wrapped_coord(state, (Editor_Coord){ data.line, data.start_x });
+    Editor_Coord wrapped_selection_end = editor_wrapped_coord(state, (Editor_Coord){ data.line, data.end_x });
+
+    for (int i = wrapped_selection_start.y; i <= wrapped_selection_end.y; i++) {
+
+        float start = (i == wrapped_selection_start.y) ? wrapped_selection_start.x : 0;
+        float end = (i == wrapped_selection_end.y) ? wrapped_selection_end.x : e->wrap_idx;
+
+        Rectangle rec = {
+            .x = data.line_number_offset + (start * data.char_width),
+            .y = i * data.line_height,
+            .width = (end - start) * data.char_width,
+            .height = data.line_height,
+        };
+
+        DrawRectangleRec(rec, e->theme.selection);
+    }
 }
 
 static Token_Type try_get_play_or_wait_token_type_at_coord(State *state, Editor_Coord coord) {
     Editor *e = &state->editor;
-    char *line = e->lines[coord.y];
+    DynArray *line = dyn_array_get(&e->lines, coord.y);
     int char_idx = coord.x;
 
     Token_Type token_type = TOKEN_NONE;
 
     if (
-        line[char_idx] == 'p' &&
-        line[char_idx + 1] == 'l' &&
-        line[char_idx + 2] == 'a' &&
-        line[char_idx + 3] == 'y'
+        dyn_char_get(line, char_idx) == 'p' &&
+        dyn_char_get(line, char_idx + 1) == 'l' &&
+        dyn_char_get(line, char_idx + 2) == 'a' &&
+        dyn_char_get(line, char_idx + 3) == 'y'
     ) {
         token_type = TOKEN_PLAY;
     }
 
     if (token_type == TOKEN_NONE &&
-        line[char_idx] == 'w' &&
-        line[char_idx + 1] == 'a' &&
-        line[char_idx + 2] == 'i' &&
-        line[char_idx + 3] == 't'
+        dyn_char_get(line, char_idx) == 'w' &&
+        dyn_char_get(line, char_idx + 1) == 'a' &&
+        dyn_char_get(line, char_idx + 2) == 'i' &&
+        dyn_char_get(line, char_idx + 3) == 't'
     ) {
         token_type = TOKEN_WAIT;
     }
@@ -55,46 +89,46 @@ static Token_Type try_get_play_or_wait_token_type_at_coord(State *state, Editor_
 
     char_idx += 4;
 
-    switch (line[char_idx]) {
+    switch (dyn_char_get(line, char_idx)) {
     default: break;
     case '1': {
-        if (line[char_idx + 1] == '6') char_idx += 2; else char_idx++; break;
+        if (dyn_char_get(line, char_idx + 1) == '6') char_idx += 2; else char_idx++; break;
     } break;
     case '2':
     case '4':
     case '8': char_idx++; break;
-    case '3': if (line[char_idx + 1] == '2') char_idx += 2; else return TOKEN_NONE; break;
-    case '6': if (line[char_idx + 1] == '4') char_idx += 2; else return TOKEN_NONE; break;
+    case '3': if (dyn_char_get(line, char_idx + 1) == '2') char_idx += 2; else return TOKEN_NONE; break;
+    case '6': if (dyn_char_get(line, char_idx + 1) == '4') char_idx += 2; else return TOKEN_NONE; break;
     }
 
-    switch (line[char_idx]) {
+    switch (dyn_char_get(line, char_idx)) {
     default: {
-        if (is_valid_in_identifier(line[char_idx])) {
+        if (is_valid_in_identifier(dyn_char_get(line, char_idx))) {
             return false;
         }
     } break;
     case 'd': {
         if (
-            line[char_idx + 1] != 'o' ||
-            line[char_idx + 2] != 't'
+            dyn_char_get(line, char_idx + 1) != 'o' ||
+            dyn_char_get(line, char_idx + 2) != 't'
         ) {
             return false;
         }
         char_idx += 3;
-        if (is_numeric(line[char_idx])) {
+        if (is_numeric(dyn_char_get(line, char_idx))) {
             char_idx++;
-        } else if (is_valid_in_identifier(line[char_idx])) {
+        } else if (is_valid_in_identifier(dyn_char_get(line, char_idx))) {
             return false;
         }
     } break;
     case 't': {
         if (
-            line[char_idx + 1] != 'r' ||
-            line[char_idx + 2] != 'i' ||
-            line[char_idx + 3] != 'p' ||
-            line[char_idx + 4] != 'l' ||
-            line[char_idx + 5] != 'e' ||
-            line[char_idx + 6] != 't'
+            dyn_char_get(line, char_idx + 1) != 'r' ||
+            dyn_char_get(line, char_idx + 2) != 'i' ||
+            dyn_char_get(line, char_idx + 3) != 'p' ||
+            dyn_char_get(line, char_idx + 4) != 'l' ||
+            dyn_char_get(line, char_idx + 5) != 'e' ||
+            dyn_char_get(line, char_idx + 6) != 't'
         ) {
             return false;
         }
@@ -102,7 +136,7 @@ static Token_Type try_get_play_or_wait_token_type_at_coord(State *state, Editor_
     } break;
     }
 
-    if (is_valid_in_identifier(line[char_idx])) {
+    if (is_valid_in_identifier(dyn_char_get(line, char_idx))) {
         return TOKEN_NONE;
     }
 
@@ -111,7 +145,8 @@ static Token_Type try_get_play_or_wait_token_type_at_coord(State *state, Editor_
 
 static bool is_note_at_coord(State *state, Editor_Coord coord) {
     Editor *e = &state->editor;
-    char c = e->lines[coord.y][coord.x];
+    DynArray *line = dyn_array_get(&e->lines, coord.y);
+    char c = dyn_char_get(line, coord.x);
 
     bool first_char_is_valid =
         (c >= 'a' && c <= 'g') ||
@@ -123,7 +158,11 @@ static bool is_note_at_coord(State *state, Editor_Coord coord) {
 
     bool has_explicit_octave = false;
     for (int offset = 1; offset < 4; offset++) {
-        char offset_char = e->lines[coord.y][coord.x + offset];
+        int offset_char_idx = coord.x + offset;
+        if (offset_char_idx >= line->length) {
+            return true;
+        }
+        char offset_char = dyn_char_get(line, offset_char_idx);
         switch (offset_char) {
         case COMMENT_CHAR: return true;
         case '#':
@@ -141,8 +180,7 @@ static bool is_note_at_coord(State *state, Editor_Coord coord) {
                 return false;
             }
         } break;
-        case ' ':
-        case '\0': {
+        case ' ': {
             return true;
         }
         }
@@ -153,32 +191,39 @@ static bool is_note_at_coord(State *state, Editor_Coord coord) {
 
 static void editor_render_base(State *state, float line_height, float char_width, int line_number_padding) {
     Editor *e = &state->editor;
-    char line_number_str[EDITOR_LINE_NUMBER_PADDING];
 
-    char current_word[EDITOR_LINE_MAX_LENGTH];
     int window_line_count = editor_window_line_count(state);
+    int line_max_chars = editor_line_max_chars(state);
 
-    for (int i = 0; i < window_line_count; i++) {
-        int line_idx = e->visual_vertical_offset + i;
+    for (int i = 0; i < e->wrap_line_count; i++) {
+        int line_idx = e->wrap_lines[i].logical_idx;
+        int visual_idx = e->wrap_lines[i].visual_idx;
+        int wrap_amount = e->wrap_lines[i].wrap_amount;
 
-        if (line_idx >= e->line_count) {
+        if (line_idx >= e->lines.length) {
             break;
         }
+
+        DynArray *line = dyn_array_get(&e->lines, line_idx);
 
         bool rest_is_comment = false;
         bool found_word = false;
         Color color = state->editor.theme.fg;
 
-        sprintf(line_number_str, "%4i", line_idx + 1);
+        char line_number_str[16];
+        snprintf(line_number_str, sizeof(line_number_str), "%4d", line_idx + 1);
         int line_number_str_len = strlen(line_number_str);
 
         for (int j = 0; j < line_number_str_len; j++) {
-            Vector2 position = { j * char_width, i * line_height };
+            Vector2 position = { j * char_width, visual_idx * line_height };
             DrawTextCodepoint(e->font, line_number_str[j], position, line_height, state->editor.theme.linenumber);
         }
 
-        for (int j = 0; e->lines[line_idx][j] != '\0'; j++) {
-            char c = e->lines[line_idx][j];
+        const int current_word_max_length = 32;
+        char current_word[current_word_max_length];
+
+        for (int j = 0; j < line->length; j++) {
+            char c = dyn_char_get(line, j);
 
             if (found_word) {
                 switch (c) {
@@ -187,7 +232,6 @@ static void editor_render_base(State *state, float line_height, float char_width
                 case '(':
                 case ')':
                 case ' ':
-                case '\0':
                 {
                     found_word = false;
                     color = state->editor.theme.fg;
@@ -195,11 +239,16 @@ static void editor_render_base(State *state, float line_height, float char_width
                 }
             }
 
+            Editor_Coord coord = {
+                .y = line_idx,
+                .x = j,
+            };
+
+            Editor_Coord visual_coord = editor_wrapped_coord(state, coord);
+
             if (!rest_is_comment && !found_word) {
                 if (is_alphabetic(c)) {
                     found_word = true;
-
-                    Editor_Coord coord = { .y = line_idx, .x = j };
 
                     Token_Type play_or_wait = try_get_play_or_wait_token_type_at_coord(state, coord);
                     if (play_or_wait != TOKEN_NONE) {
@@ -211,14 +260,22 @@ static void editor_render_base(State *state, float line_height, float char_width
                     } else if (is_note_at_coord(state, coord)) {
                         color = state->editor.theme.note;
                     } else {
-                        int char_offset;
-                        for (
-                            char_offset = 0;
-                            !isspace(e->lines[line_idx][j + char_offset]) &&
-                            is_valid_in_identifier(e->lines[line_idx][j + char_offset]);
-                            char_offset += 1
-                        ) {
-                            current_word[char_offset] = e->lines[line_idx][j + char_offset];
+                        int char_offset = 0;
+                        while (true) {
+                            if (char_offset >= current_word_max_length) {
+                                break;
+                            }
+                            if ((j + char_offset) >= line->length) {
+                                break;
+                            }
+                            if (!is_valid_in_identifier(dyn_char_get(line, j + char_offset))) {
+                                break;
+                            }
+
+                            char *c = dyn_array_get(line, j + char_offset);
+                            current_word[char_offset] = *c;
+
+                            char_offset++;
                         }
                         current_word[char_offset] = '\0';
 
@@ -269,8 +326,8 @@ static void editor_render_base(State *state, float line_height, float char_width
             }
 
             Vector2 position = {
-                line_number_padding  + (j * char_width),
-                (i * line_height)
+                line_number_padding + (visual_coord.x * char_width),
+                (visual_coord.y * line_height)
             };
 
             DrawTextCodepoint(e->font, c, position, line_height, color);
@@ -284,6 +341,8 @@ static void editor_render_state_write(State *state) {
     float line_height = editor_line_height(state);
     float char_width = editor_char_width(line_height);
     float line_number_padding = char_width * EDITOR_LINE_NUMBER_PADDING;
+
+    render_cursor_line(state);
 
     if (cursor_selection_active(state)) {
         Editor_Selection_Data selection_data = get_cursor_selection_data(state);
@@ -299,23 +358,25 @@ static void editor_render_state_write(State *state) {
         if (selection_data.start.y == selection_data.end.y) {
             selection_render_data.start_x = selection_data.start.x;
             selection_render_data.end_x = selection_data.end.x;
-            render_selection(selection_render_data, e->theme.selection);
+            render_selection(state, selection_render_data);
         } else {
+            DynArray *line = dyn_array_get(&e->lines, selection_render_data.line);
             selection_render_data.start_x = selection_data.start.x;
-            selection_render_data.end_x = strlen(e->lines[selection_render_data.line]);
-            render_selection(selection_render_data, e->theme.selection);
+            selection_render_data.end_x = line->length;
+            render_selection(state, selection_render_data);
 
             selection_render_data.start_x = 0;
             for (int i = selection_data.start.y + 1; i < selection_data.end.y; i++) {
+                DynArray *other_line = dyn_array_get(&e->lines, i);
                 selection_render_data.line = i;
-                selection_render_data.end_x = strlen(e->lines[i]);
-                render_selection(selection_render_data, e->theme.selection);
+                selection_render_data.end_x = other_line->length;
+                render_selection(state, selection_render_data);
             }
 
             selection_render_data.line = selection_data.end.y;
             selection_render_data.start_x = 0;
             selection_render_data.end_x = selection_data.end.x;
-            render_selection(selection_render_data, e->theme.selection);
+            render_selection(state, selection_render_data);
         }
     }
 
@@ -326,12 +387,16 @@ static void editor_render_state_write(State *state) {
     if (e->cursor_anim_time > pi2) {
         e->cursor_anim_time -= pi2;
     }
+    if (e->cursor.y >= e->wrap_idx) {
+        e->visual_vertical_offset++;
+    }
+    Editor_Coord wrapped_cursor = editor_wrapped_coord(state, e->cursor);
     float alpha = (cos(e->cursor_anim_time) + 1.0) * 127.5f;
     Editor_Cursor_Render_Data cursor_data = {
-        .y = e->cursor.y,
+        .y = wrapped_cursor.y,
         .line_number_offset = line_number_padding,
         .visual_vertical_offset = e->visual_vertical_offset,
-        .x = e->cursor.x,
+        .x = wrapped_cursor.x,
         .line_height = line_height,
         .char_width = char_width,
         .alpha = alpha
@@ -362,7 +427,7 @@ void editor_render_state_play(State *state) {
         return;
     }
 
-    int middle_line = editor_window_line_count(state) / 2;
+    int middle_line = e->wrap_line_count / 2;
 
     float rec_line_size = 5.0f;
     Rectangle rec;
@@ -397,3 +462,4 @@ void editor_render_state_play(State *state) {
 
     DrawRectangleLinesEx(rec, 5, color);
 }
+

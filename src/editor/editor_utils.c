@@ -4,21 +4,104 @@
 #include <ctype.h>
 #include "../main.h"
 
-static void console_set_text(State *state, char *text);
+static void console_set_text(State *state, const char *text);
 static void console_get_highlighted_text(State *state, char *buffer);
 static void register_undo(State *state, Editor_Action_Type type, Editor_Coord coord, void *data);
+
+inline static void editor_clear(State *state) {
+    Editor *e = &state->editor;
+    for (int i = 0; i < e->lines.length; i++) {
+        DynArray *line = dyn_array_get(&e->lines, i);
+        dyn_array_release(line);
+    }
+    dyn_array_clear(&e->lines);
+
+    DynArray init_line = {0};
+    dyn_array_alloc(&init_line, sizeof(char));
+    dyn_array_push(&e->lines, &init_line);
+}
 
 inline static float editor_line_height(State *state) {
     int monitor = GetCurrentMonitor();
     return (float)GetMonitorHeight(monitor) / (float)state->editor.visible_lines;
 }
 
+inline static int editor_char_width(float line_height) {
+    return line_height * 0.6f;
+}
+
 inline static int editor_window_line_count(State *state) {
     return GetScreenHeight() / editor_line_height(state);
 }
 
-inline static int editor_char_width(float line_height) {
-    return line_height * 0.6f;
+inline static int editor_line_max_chars(State *state) {
+    return GetScreenWidth() / editor_char_width(editor_line_height(state));
+}
+
+inline static int editor_line_number_string(char buffer[16], int line_number) {
+    snprintf(buffer, 16, "%4d", line_number);
+    return strlen(buffer);
+}
+
+Editor_Coord editor_wrapped_coord(State *state, Editor_Coord coord) {
+    Editor *e = &state->editor;
+    for (int i = 0; i < e->wrap_line_count; i++) {
+        if (e->wrap_lines[i].logical_idx == coord.y) {
+            return (Editor_Coord) {
+                .y = e->wrap_lines[i].visual_idx + (coord.x / e->wrap_idx),
+                .x = coord.x % e->wrap_idx,
+            };
+        }
+    }
+    return (Editor_Coord){0};
+}
+
+static void editor_update_wrapped_line_data(State *state) {
+    Editor *e = &state->editor;
+
+    char line_number_string[16];
+    int max_line_number_length = editor_line_number_string(line_number_string, e->lines.length);
+    e->wrap_idx = editor_line_max_chars(state) - max_line_number_length;
+
+    e->wrap_line_count = editor_window_line_count(state);
+    int visual_idx = 0;
+
+    int i;
+    for (i = 0; true; i++) {
+        int line_idx = e->visual_vertical_offset + i;
+        if (line_idx >= e->lines.length) {
+            break;
+        }
+
+        DynArray *line = dyn_array_get(&e->lines, line_idx);
+
+        int wraps = (line->length == 0) ? 0 : (line->length - 1) / e->wrap_idx;
+
+        e->wrap_line_count -= wraps;
+        e->wrap_lines[i].logical_idx = line_idx;
+        e->wrap_lines[i].visual_idx = visual_idx;
+        e->wrap_lines[i].wrap_amount = wraps;
+
+        int visual_lines_for_line = wraps + 1;
+
+        if ((visual_idx + visual_lines_for_line) > e->visible_lines) {
+            break;
+        }
+
+        visual_idx += visual_lines_for_line;
+    }
+}
+
+inline static bool is_line_on_screen(State *state, Editor_Coord coord) {
+    Editor *e = &state->editor;
+    Editor_Coord wrapped_coord = editor_wrapped_coord(state, coord);
+    if (wrapped_coord.y < e->visual_vertical_offset) {
+        return false;
+    }
+    if (wrapped_coord.y >= e->visual_vertical_offset + e->wrap_line_count) {
+        return false;
+    }
+    return true;
 }
 
 static char keyboard_key_to_char(State *state, KeyboardKey key, bool shift) {
@@ -84,182 +167,126 @@ static char keyboard_key_to_char(State *state, KeyboardKey key, bool shift) {
 
 static void add_editor_line(State *state, Editor_Coord coord) {
     Editor *e = &state->editor;
-    e->line_count += 1;
-    {
-        int i;
-        for (i = 0; e->lines[coord.y][coord.x + i] != '\0'; i++) {
-            ASSERT(i < EDITOR_LINE_MAX_LENGTH);
-            e->whatever_buffer[i] = e->lines[coord.y][coord.x + i];
-        }
-        ASSERT(i < EDITOR_LINE_MAX_LENGTH);
-        e->whatever_buffer[i] = '\0';
-    }
-    ASSERT(coord.y < EDITOR_LINE_CAPACITY);
-    ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
-    e->lines[coord.y][coord.x] = '\0';
-    for (int i = e->line_count - 1; i > (coord.y + 1); i--) {
 
-        ASSERT(i < EDITOR_LINE_MAX_LENGTH);
-        ASSERT((i - 1) >= 0);
+    DynArray new_line;
+    dyn_array_alloc(&new_line, sizeof(char));
 
-        strcpy(e->lines[i], e->lines[i - 1]);
+    DynArray *prev_line = dyn_array_get(&e->lines, coord.y);
+
+    if (coord.x < prev_line->length) {
+        int copy_amount = prev_line->length - coord.x;
+        char *copy_start = dyn_array_get(prev_line, coord.x);
+
+        dyn_array_insert(&new_line, 0, copy_start, copy_amount);
+        dyn_array_resize(prev_line, coord.x);
     }
-    coord.y++;
-    ASSERT(coord.y < EDITOR_LINE_CAPACITY);
-    strcpy(e->lines[coord.y], e->whatever_buffer);
+
+    dyn_array_insert(&e->lines, coord.y + 1, &new_line, 1);
 }
 
 static void delete_editor_line(State *state, int line_idx) {
     Editor *e = &state->editor;
-    int line_len = TextLength(e->lines[line_idx]);
-    int prev_line_len = TextLength(e->lines[line_idx - 1]);
-    ASSERT((line_len + prev_line_len) < EDITOR_LINE_MAX_LENGTH - 1);
-    strcat(e->lines[line_idx - 1], e->lines[line_idx]);
-    for (int i = line_idx; i < e->line_count; i++) {
-        ASSERT((i + 1) < EDITOR_LINE_CAPACITY);
-        strcpy(e->lines[i], e->lines[i + 1]);
+
+    DynArray *line_to_delete = dyn_array_get(&e->lines, line_idx);
+    DynArray *prev_line = dyn_array_get(&e->lines, line_idx - 1);
+
+    if (line_to_delete->length > 0) {
+        char *line_to_delete_inner = dyn_array_get(line_to_delete, 0);
+        dyn_array_insert(prev_line, prev_line->length, line_to_delete_inner, line_to_delete->length);
     }
-    e->line_count--;
+
+    dyn_array_release(line_to_delete);
+    dyn_array_remove(&e->lines, line_idx, 1);
 }
 
-static void add_editor_char(State *state, char character, Editor_Coord coord) {
-    ASSERT(coord.y < EDITOR_LINE_CAPACITY);
-    ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
+static void add_editor_char(State *state, char c, Editor_Coord coord) {
     Editor *e = &state->editor;
-    if (TextLength(e->lines[coord.y]) > EDITOR_LINE_MAX_LENGTH - 2) {
-        return;
-    }
-    char next = e->lines[coord.y][coord.x];
-    e->lines[coord.y][coord.x] = character;
-    coord.x++;
-    while (true) {
-        ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
-        char tmp = e->lines[coord.y][coord.x];
-        e->lines[coord.y][coord.x] = next;
-        next = tmp;
-        if (e->lines[coord.y][coord.x] == '\0') {
-            break;
-        }
-        coord.x++;
-    }
-    coord.x++;
-    ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
-    e->lines[coord.y][coord.x] = '\0';
+    DynArray *line = dyn_array_get(&e->lines, coord.y);
+    dyn_array_insert(line, coord.x, &c, 1);
 }
 
 static void delete_editor_char(State *state, Editor_Coord coord) {
-    ASSERT(coord.y < EDITOR_LINE_CAPACITY);
-    ASSERT(coord.x < EDITOR_LINE_MAX_LENGTH);
     Editor *e = &state->editor;
-    int i;
-    for (i = coord.x; e->lines[coord.y][i] != '\0'; i++) {
-        ASSERT((i + 1) < EDITOR_LINE_MAX_LENGTH);
-        e->lines[coord.y][i] = e->lines[coord.y][i + 1];
-    }
-    e->lines[coord.y][i] = '\0';
+    DynArray *line = dyn_array_get(&e->lines, coord.y);
+    dyn_array_remove(line, coord.x, 1);
 }
 
-static Editor_Coord add_editor_string(State *state, char *string, Editor_Coord coord) {
-    int idx = 0;
-    bool more_chars = true;
-    while (more_chars) {
-        switch (string[idx]) {
-        case '\0': {
-            more_chars = false;
-        } break;
+static Editor_Coord add_editor_string(State *state, DynArray *string, Editor_Coord coord) {
+    for (int i = 0; i < string->length; i++) {
+        char c = dyn_char_get(string, i);
+        switch (c) {
         case '\n': {
             add_editor_line(state, coord);
             coord.y++;
             coord.x = 0;
         } break;
         default: {
-            add_editor_char(state, string[idx], coord);
+            add_editor_char(state, c, coord);
             coord.x++;
         } break;
         }
-        idx++;
     }
     return coord;
 }
 
 static void delete_editor_string(State *state, Editor_Coord start, Editor_Coord end) {
-    ASSERT(start.y < EDITOR_LINE_CAPACITY);
-    ASSERT(start.x < EDITOR_LINE_MAX_LENGTH);
-    ASSERT(end.y < EDITOR_LINE_CAPACITY);
-    ASSERT(end.x < EDITOR_LINE_MAX_LENGTH);
     Editor *e = &state->editor;
+    DynArray *start_line = dyn_array_get(&e->lines, start.y);
     if (start.y < end.y) {
-        e->lines[start.y][start.x] = '\0';
+        DynArray *end_line = dyn_array_get(&e->lines, end.y);
+        dyn_array_remove(start_line, start.x, start_line->length - start.x);
         int i;
-        for (i = 0; i < strlen(e->lines[end.y]) - end.x; i++) {
-            ASSERT(i < EDITOR_WHATEVER_BUFFER_LENGTH);
-            e->whatever_buffer[i] = e->lines[end.y][i + end.x];
+        for (i = 0; i < end_line->length - end.x; i++) {
+            char c = dyn_char_get(end_line, i + end.x);
+            dyn_array_push(start_line, &c);
         }
-        ASSERT(i < EDITOR_WHATEVER_BUFFER_LENGTH);
-        e->whatever_buffer[i] = '\0';
-        strcat(e->lines[start.y], e->whatever_buffer);
-        int delete_amount = end.y - start.y;
-        for (i = start.y + 1; i < e->line_count; i++) {
-            ASSERT(i < EDITOR_LINE_CAPACITY);
-            int copy_line = i + delete_amount;
-            ASSERT(copy_line < EDITOR_LINE_CAPACITY);
-            if (copy_line >= e->line_count) {
-                e->lines[i][0] = '\0';
-            } else {
-                strcpy(e->lines[i], e->lines[copy_line]);
-            }
+        int remove_start_idx = start.y + 1;
+        int remove_amount = end.y - start.y;
+        for (int i = remove_start_idx; i < remove_amount; i++) {
+            DynArray *line = dyn_array_get(&e->lines, i);
+            dyn_array_release(line);
         }
-        e->line_count -= delete_amount;
-        ASSERT(e->line_count > 0);
+        dyn_array_remove(&e->lines, remove_start_idx, remove_amount);
     } else {
-        int i;
-        for (i = 0; i < strlen(e->lines[start.y]) - end.x; i++) {
-            ASSERT(i < EDITOR_WHATEVER_BUFFER_LENGTH);
-            ASSERT((i + end.x) < EDITOR_LINE_MAX_LENGTH);
-            e->whatever_buffer[i] = e->lines[start.y][i + end.x];
-        }
-        ASSERT(i < EDITOR_WHATEVER_BUFFER_LENGTH);
-        e->whatever_buffer[i] = '\0';
-        e->lines[start.y][start.x] = '\0';
-        ASSERT((strlen(e->lines[start.y]) + strlen(e->whatever_buffer)) < EDITOR_LINE_MAX_LENGTH);
-        strcat(e->lines[start.y], e->whatever_buffer);
+        int remove_amount = end.x - start.x;
+        dyn_array_remove(start_line, start.x, remove_amount);
     }
 }
 
-static char *copy_editor_string(State *state, Editor_Coord start, Editor_Coord end) {
+static void copy_editor_string(State *state, DynArray *string, Editor_Coord start, Editor_Coord end) {
     Editor *e = &state->editor;
-    char *string = (char *)dyn_mem_alloc(sizeof(char) * e->line_count * EDITOR_LINE_CAPACITY);
-    int str_idx = 0;
+    dyn_array_clear(string);
+    const char new_line = '\n';
     if (start.y < end.y) {
-        int delete_amount = end.y - start.y;
-        for (int i = start.x; e->lines[start.y][i] != '\0'; i++) {
-            string[str_idx++] = e->lines[start.y][i];
+        DynArray *start_line = dyn_array_get(&e->lines, start.y);
+        if (start.x < (start_line->length - 1)) {
+            dyn_array_insert(string, string->length, dyn_array_get(start_line, start.x), start_line->length - start.x);
         }
-        string[str_idx++] = '\n';
-        for (int i = start.y + 1; i < (start.y + delete_amount); i++) {
-            for (int j = 0; e->lines[i][j] != '\0'; j++) {
-                string[str_idx++] = e->lines[i][j];
+        dyn_array_push(string, &new_line);
+
+        for (int i = start.y + 1; i < end.y; i++) {
+            DynArray *middle_line = dyn_array_get(&e->lines, i);
+            if (middle_line->length > 0) {
+                dyn_array_insert(string, string->length, dyn_array_get(middle_line, 0), middle_line->length);
             }
-            string[str_idx++] = '\n';
+            dyn_array_push(string, &new_line);
         }
-        for (int i = 0; i < end.x; i++) {
-            string[str_idx++] = e->lines[end.y][i];
+
+        DynArray *end_line = dyn_array_get(&e->lines, end.y);
+        if (end_line->length > 0 && end.x > 0) {
+            dyn_array_insert(string, string->length, dyn_array_get(end_line, 0), end.x);
         }
-        string[str_idx++] = '\0';
     } else {
-        for (int i = start.x; i < end.x; i++) {
-            string[str_idx++] = e->lines[start.y][i];
-        }
-        string[str_idx++] = '\0';
+        DynArray *line = dyn_array_get(&e->lines, start.y);
+        int insert_amount = end.x - start.x;
+        dyn_array_insert(string, 0, dyn_array_get(line, start.x), insert_amount);
     }
-    return string;
 }
 
 static void snap_visual_vertical_offset_to_cursor(State *state) {
     Editor *e = &state->editor;
-    float window_line_count = editor_window_line_count(state);
-    if (e->cursor.y > (e->visual_vertical_offset + window_line_count - 1)) {
-        e->visual_vertical_offset = e->cursor.y - window_line_count + 1;
+    if (e->cursor.y > (e->visual_vertical_offset + e->wrap_line_count - 1)) {
+        e->visual_vertical_offset = e->cursor.y - e->wrap_line_count + 1;
     } else if (e->cursor.y < e->visual_vertical_offset) {
         e->visual_vertical_offset = e->cursor.y;
     }
@@ -287,14 +314,14 @@ static void set_cursor_x(State *state, int x) {
     }
 }
 
-static void set_cursor_y(State *state, int line) {
+static void set_cursor_y(State *state, int line_idx) {
     Editor *e = &state->editor;
-    e->cursor.y = line;
-    e->selection_y = line;
-    int len = strlen(e->lines[line]);
-    e->cursor.x = (len > e->preferred_x)
+    DynArray *line = dyn_array_get(&e->lines, line_idx);
+    e->cursor.y = line_idx;
+    e->selection_y = line_idx;
+    e->cursor.x = (line->length > e->preferred_x)
         ? e->preferred_x
-        : len;
+        : line->length;
     e->selection_x = e->cursor.x;
     e->cursor_anim_time = 0.0;
 }
@@ -306,14 +333,14 @@ static void set_cursor_selection_x(State *state, int x) {
     snap_visual_vertical_offset_to_cursor(state);
 }
 
-static void set_cursor_selection_y(State *state, int line) {
+static void set_cursor_selection_y(State *state, int line_idx) {
     Editor *e = &state->editor;
-    state->editor.cursor.y = line;
+    DynArray *line = dyn_array_get(&e->lines, line_idx);
+    state->editor.cursor.y = line_idx;
     state->editor.cursor_anim_time = 0.0;
-    int len = strlen(e->lines[line]);
-    e->cursor.x = (len > e->preferred_x)
+    e->cursor.x = (line->length > e->preferred_x)
         ? e->preferred_x
-        : len;
+        : line->length;
     snap_visual_vertical_offset_to_cursor(state);
 }
 
@@ -354,7 +381,6 @@ static Editor_Selection_Data get_cursor_selection_data(State *state) {
 }
 
 static bool cursor_delete_selection(State *state) {
-    Editor *e = &state->editor;
     if (!cursor_selection_active(state)) {
         return false;
     }
@@ -370,36 +396,41 @@ static bool cursor_delete_selection(State *state) {
 static void go_to_definition(State *state) {
     Editor *e = &state->editor;
 
-    char ident[EDITOR_LINE_MAX_LENGTH];
-    int ident_offset = -1;
-    while ((e->cursor.x + ident_offset) >= 0 && is_valid_in_identifier(e->lines[e->cursor.y][e->cursor.x + ident_offset])) {
-        ident_offset--;
+    dyn_array_clear(&e->whatever_buffer);
+
+    int ident_offset = 1;
+    DynArray *cursor_line = dyn_array_get(&e->lines, e->cursor.y);
+    while ((e->cursor.x - ident_offset) >= 0 && is_valid_in_identifier(dyn_char_get(cursor_line, e->cursor.x + ident_offset))) {
+        ident_offset++;
     }
     ident_offset++;
     int ident_len = 0;
-    while (is_valid_in_identifier(e->lines[e->cursor.y][e->cursor.x + ident_offset])) {
-        ident[ident_len] = e->lines[e->cursor.y][e->cursor.x + ident_offset];
+    while (is_valid_in_identifier(dyn_char_get(cursor_line, e->cursor.x + ident_offset))) {
+        char c = dyn_char_get(cursor_line, e->cursor.x + ident_offset);
+        dyn_array_push(&e->whatever_buffer, &c);
         ident_offset++;
         ident_len++;
     }
-    ident[ident_len] = '\0';
     int ident_line_idx = 0;
     int ident_char_idx = 0;
     int ident_idx = 0;
     bool ident_found = false;
 
-    char *define = "define";
+    const char *define = "define";
     int define_len = 6;
     int define_idx = 0;
     bool define_found = false;
 
-    for (int i = 0; i < e->line_count; i++) {
+    for (int i = 0; i < e->lines.length; i++) {
         if (ident_found) {
             break;
         }
-        for (int j = 0; e->lines[i][j] != '\0'; j++) {
+
+        DynArray *current_line = dyn_array_get(&e->lines, i);
+        for (int j = 0; current_line->length; j++) {
+            char current_char = dyn_char_get(current_line, j);
             if (!define_found) {
-                bool define_char_matches = e->lines[i][j] == define[define_idx];
+                bool define_char_matches = current_char == define[define_idx];
                 if (define_char_matches) {
                     define_idx++;
                 }
@@ -407,13 +438,13 @@ static void go_to_definition(State *state) {
                     define_found = true;
                 }
             }
-            if (is_valid_in_identifier(e->lines[i][j])) {
-                bool ident_char_matches = e->lines[i][j] == ident[ident_idx];
+            if (is_valid_in_identifier(current_char)) {
+                bool ident_char_matches = current_char == dyn_char_get(&e->whatever_buffer, ident_idx);
                 if (ident_char_matches) {
                     ident_idx++;
                     int next_idx = j + 1;
-                    char next = e->lines[i][next_idx];
-                    if (ident_idx == ident_len && !is_valid_in_identifier(next) || next == '\0') {
+                    char next = dyn_char_get(current_line, next_idx);
+                    if ((ident_idx == ident_len && !is_valid_in_identifier(next)) || next_idx >= current_line->length) {
                         ident_line_idx = i;
                         ident_char_idx = next_idx - ident_len;
                         ident_found = true;
@@ -437,10 +468,6 @@ static void go_to_definition(State *state) {
 static void cursor_new_line(State *state) {
     Editor *e = &state->editor;
     cursor_delete_selection(state);
-    if (e->line_count >= EDITOR_LINE_CAPACITY - 1) {
-        // TODO: this is currently a silent failure and it should not at all be that
-        return;
-    }
     add_editor_line(state, e->cursor);
     set_cursor_y(state, e->cursor.y + 1);
     set_cursor_x(state, 0);
@@ -459,15 +486,17 @@ static void cursor_add_char(State *state, char character) {
 
 static void cursor_delete_char(State *state) {
     Editor *e = &state->editor;
+    DynArray *cursor_line = dyn_array_get(&e->lines, e->cursor.y);
     if (e->cursor.x > 0) {
         set_cursor_x(state, e->cursor.x - 1);
-        char char_to_be_deleted = e->lines[e->cursor.y][e->cursor.x];
+        char char_to_be_deleted = dyn_char_get(cursor_line, e->cursor.x);
         Editor_Coord action_coord = e->cursor;
         register_undo(state, EDITOR_ACTION_DELETE_CHAR, action_coord, &char_to_be_deleted);
         delete_editor_char(state, e->cursor);
     } else if (e->cursor.y > 0) {
         int new_y = e->cursor.y - 1;
-        int new_x = TextLength(e->lines[new_y]);
+        DynArray *new_y_line = dyn_array_get(&e->lines, new_y);
+        int new_x = new_y_line->length;
         delete_editor_line(state, e->cursor.y);
         set_cursor_y(state, new_y);
         set_cursor_x(state, new_x);
@@ -487,26 +516,29 @@ static void trigger_key(State *state, int key, bool ctrl, bool shift) {
         ? set_cursor_selection_x
         : set_cursor_x;
 
+    DynArray *cursor_line = dyn_array_get(&e->lines, e->cursor.y);
+
     switch (key) {
     case KEY_RIGHT:
         if (ctrl &&
-            e->cursor.y < (e->line_count - 1) &&
-            e->lines[e->cursor.y][e->cursor.x] == '\0'
+            e->cursor.y < (e->lines.length - 1) &&
+            e->cursor.x == cursor_line->length
         ) {
             set_target_y(state, e->cursor.y + 1);
             set_target_x(state, 0);
-        } else if (e->lines[e->cursor.y][e->cursor.x] != '\0') {
+        } else if (e->cursor.x < cursor_line->length) {
             if (ctrl) {
                 bool found_whitespace = false;
                 int i = e->cursor.x;
-                while (1) {
-                    if (e->lines[e->cursor.y][i] == '\0') {
+                while (true) {
+                    char c = dyn_char_get(cursor_line, i);
+                    if (i == cursor_line->length) {
                         set_target_x(state, i);
                         break;
                     }
-                    if (!found_whitespace && isspace(e->lines[e->cursor.y][i])) {
+                    if (!found_whitespace && isspace(c)) {
                         found_whitespace = true;
-                    } else if (found_whitespace && !isspace(e->lines[e->cursor.y][i])) {
+                    } else if (found_whitespace && !isspace(c)) {
                         set_target_x(state, i);
                         break;
                     }
@@ -523,22 +555,23 @@ static void trigger_key(State *state, int key, bool ctrl, bool shift) {
     case KEY_LEFT:
         if (ctrl && e->cursor.x == 0 && e->cursor.y > 0) {
             set_target_y(state, e->cursor.y - 1);
-            set_target_x(state, strlen(e->lines[e->cursor.y]));
+            set_target_x(state, cursor_line->length);
         } else if (e->cursor.x > 0) {
             if (ctrl) {
                 int i = e->cursor.x;
-                while (i > 0 && e->lines[e->cursor.y][i] != ' ') {
+                while (i > 0 && dyn_char_get(cursor_line, i) != ' ') {
                     i--;
                 }
                 bool found_word = false;
-                while (1) {
+                while (true) {
+                    char c = dyn_char_get(cursor_line, i);
                     if (i == 0) {
                         set_target_x(state, 0);
                         break;
                     }
-                    if (!found_word && e->lines[e->cursor.y][i] != ' ') {
+                    if (!found_word && c != ' ') {
                         found_word = true;
-                    } else if (found_word && e->lines[e->cursor.y][i] == ' ') {
+                    } else if (found_word && c == ' ') {
                         set_target_x(state, i + 1);
                         break;
                     }
@@ -554,21 +587,21 @@ static void trigger_key(State *state, int key, bool ctrl, bool shift) {
         break;
     case KEY_DOWN:
         {
-            int line = e->cursor.y;
-            if (e->cursor.y < e->line_count - 1) {
-                line++;
+            int line_idx = e->cursor.y;
+            if (e->cursor.y < e->lines.length - 1) {
+                line_idx++;
             }
-            set_target_y(state, line);
+            set_target_y(state, line_idx);
             snap_visual_vertical_offset_to_cursor(state);
         }
         break;
     case KEY_UP:
         {
-            int line = e->cursor.y;
+            int line_idx = e->cursor.y;
             if (e->cursor.y > 0) {
-                line--;
+                line_idx--;
             }
-            set_target_y(state, line);
+            set_target_y(state, line_idx);
             snap_visual_vertical_offset_to_cursor(state);
         }
         break;
@@ -585,8 +618,10 @@ static void trigger_key(State *state, int key, bool ctrl, bool shift) {
 }
 
 static void editor_set_cursor_x_first_non_whitespace(State *state) {
+    Editor *e = &state->editor;
+    DynArray *cursor_line = dyn_array_get(&e->lines, e->cursor.y);
     int x;
-    for (x = 0; state->editor.lines[state->editor.cursor.y][x] == ' '; x++);
+    for (x = 0; dyn_char_get(cursor_line, x) == ' '; x++);
     set_cursor_x(state, x);
 }
 
@@ -597,13 +632,13 @@ static bool auto_click(State *state, KeyboardKey key) {
         e->autoclick_key = key;
         e->autoclick_down_time = 0.0f;
         return true;
-    } else if (IsKeyDown(key) && e->autoclick_key == key) {
+    } else if (IsKeyDown(key) && e->autoclick_key == (int)key) {
         e->autoclick_down_time += state->delta_time;
         if (e->autoclick_down_time > AUTOCLICK_UPPER_THRESHOLD) {
             e->autoclick_down_time = AUTOCLICK_LOWER_THRESHOLD;
             return true;
         }
-    } else if (e->autoclick_key == key) {
+    } else if (e->autoclick_key == (int)key) {
         e->autoclick_key = KEY_NULL;
         e->autoclick_down_time = 0.0f;
     }

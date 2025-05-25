@@ -26,11 +26,14 @@ static void parser_run(Compiler *compiler) {
 
     compiler->tone_amount = 0;
 
-    uint tone_idx = 0;
+    int tone_idx = 0;
     bool semi_flag = false;
 
     for (int i = parser->token_idx; i < compiler->token_amount; i++) {
         switch (tokens[i].type) {
+        default:
+            ASSERT(false);
+            break;
         case TOKEN_PLAY:
         case TOKEN_WAIT: {
             Tone* tone = &compiler->tones[compiler->tone_amount];
@@ -91,7 +94,6 @@ static void parser_run(Compiler *compiler) {
                 i++;
                 offset = peek_token_ptr->value.int_number;
             }
-            Chord new_chord = {0};
             for (int i = 0; i < parser->current_chord.size; i++) {
                 for (int j = 0; j < offset; j += 1) {
                     parser->current_chord.notes[i] += direction;

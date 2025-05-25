@@ -8,10 +8,11 @@ void finder_update_matches(State *state) {
         e->finder_matches = 0;
     }
     int matches = 0;
-    for (int i = 0; i < e->line_count; i++) {
+    for (int i = 0; i < e->lines.length; i++) {
+        DynArray *line = dyn_array_get(&e->lines, i);
         int s_idx = 0;
-        for (int j = 0; e->lines[i][j] != '\0'; j++) {
-            if (e->lines[i][j] == e->finder_buffer[s_idx]) {
+        for (int j = 0; dyn_char_get(line, j) != '\0'; j++) {
+            if (dyn_char_get(line, j) == e->finder_buffer[s_idx]) {
                 s_idx++;
                 if (s_idx == e->finder_buffer_length) {
                     matches++;
@@ -65,10 +66,11 @@ Big_State find_text(State *state, bool shift) {
             e->finder_match_idx = (e->finder_match_idx + 1) % e->finder_matches;
         }
         int match_idx = 0;
-        for (int i = 0; i < e->line_count; i++) {
+        for (int i = 0; i < e->lines.length; i++) {
+            DynArray *line = dyn_array_get(&e->lines, i);
             int s_idx = 0;
-            for (int j = 0; e->lines[i][j] != '\0'; j++) {
-                if (e->lines[i][j] == e->finder_buffer[s_idx]) {
+            for (int j = 0; j < line->length; j++) {
+                if (dyn_char_get(line, j) == e->finder_buffer[s_idx]) {
                     s_idx++;
                     if (s_idx == e->finder_buffer_length) {
                         if (match_idx == e->finder_match_idx) {

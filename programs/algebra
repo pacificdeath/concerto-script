@@ -1,0 +1,35 @@
+bpm 500
+
+define n1 (c5)
+define n2 (c#5)
+define n3 (cb5)
+
+define m1 (play fall 6 play rise 6)
+define m2 (m1 fall 4 play rise 4)
+define m3 (m2 play)
+
+define x1 (n1 m2)
+define x2 (n2 m3)
+define x3 (n3 m1)
+
+define y1 (n1 m1)
+define y2 (n2 m2)
+define y3 (n3 m3)
+
+define z1 (n1 m3)
+define z2 (n2 m1)
+define z3 (n3 m2)
+
+forever (
+    x1 x2 x3
+    x2 x3 x1
+    x3 x1 x2
+
+    y1 y2 y3
+    y2 y3 y1
+    y3 y1 y2
+
+    z1 z2 z3
+    z2 z3 z1
+    z3 z1 z2
+)

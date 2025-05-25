@@ -2,24 +2,68 @@
 #define MAIN_H
 
 #include <stdlib.h>
+#include <string.h>
 
-typedef int unsigned uint;
+#ifdef DEBUG
+#include <stdio.h>
+#endif
+
+#include "../raylib-5.0_win64_mingw-w64/include/raylib.h"
+
+#include "windows_wrapper.h"
+
 typedef short int16;
 typedef short unsigned uint16;
 typedef char int8;
 typedef char unsigned uint8;
 
-#include "../raylib-5.0_win64_mingw-w64/include/raylib.h"
-#include "windows_wrapper.h"
-
 #ifdef DEBUG
-    #define ASSERT(condition)\
-        do {\
-            if (!(condition)) {\
-                printf("You are a horrible person\n -> %s:%i", __FILE__, __LINE__);\
-                exit(1);\
-            }\
-        } while (0)
+    static void log_int(char *file_name, int line_number, char *literal_integer, int integer) {
+        set_console_color(CONSOLE_FG_RED);
+        printf("%s", file_name);
+        reset_console_color();
+        printf(":");
+        set_console_color(CONSOLE_FG_YELLOW);
+        printf("%i", line_number);
+        set_console_color(CONSOLE_FG_RED);
+        reset_console_color();
+
+        printf(" (", literal_integer);
+        set_console_color(CONSOLE_FG_GREEN);
+        printf("%s", literal_integer);
+        reset_console_color();
+        printf(") = ");
+        set_console_color(CONSOLE_FG_BLUE);
+        printf("%i\n", integer);
+        reset_console_color();
+    }
+    #define LOG(integer) do { log_int(__FILE__, __LINE__, #integer, integer); } while (0)
+
+    static void are_you_a_horrible_person(bool condition, char *condition_string, char *file_name, int line_number) {
+        if (!(condition)) {
+            set_console_color(CONSOLE_FG_RED);
+            printf("You are a horrible person\n");
+
+            reset_console_color();
+            printf(" -> ");
+            set_console_color(CONSOLE_FG_YELLOW);
+            printf("%s", file_name);
+            reset_console_color();
+            printf(":");
+            set_console_color(CONSOLE_FG_YELLOW);
+            printf("%i\n", line_number);
+
+            reset_console_color();
+            printf(" -> (");
+            set_console_color(CONSOLE_FG_RED);
+            printf("%s", condition_string);
+            reset_console_color();
+            printf(")\n");
+
+            exit(1);
+        }
+    }
+    #define ASSERT(condition) do { are_you_a_horrible_person(condition, #condition, __FILE__, __LINE__); } while (0)
 #else
     #define ASSERT(condition)
 #endif
@@ -45,8 +89,6 @@ typedef char unsigned uint8;
 #define SILENCE (MAX_NOTE + 1)
 #define COMMENT_CHAR '!'
 
-#define EDITOR_LINE_CAPACITY 256
-#define EDITOR_LINE_MAX_LENGTH 64
 #define EDITOR_LINE_NUMBER_PADDING 5
 #define AUTO_CLICKABLE_KEYS_AMOUNT 6
 #define AUTOCLICK_LOWER_THRESHOLD 0.3F
@@ -60,8 +102,7 @@ typedef char unsigned uint8;
 #define EDITOR_FILENAMES_MAX_AMOUNT 10
 #define EDITOR_FINDER_BUFFER_MAX 32
 #define EDITOR_GO_TO_LINE_BUFFER_MAX 5
-#define EDITOR_UNDO_BUFFER_MAX 64
-#define EDITOR_WHATEVER_BUFFER_LENGTH (EDITOR_LINE_MAX_LENGTH * 2)
+#define EDITOR_UNDO_BUFFER_MAX 512
 #define EDITOR_DEFAULT_VISIBLE_LINES 50
 #define EDITOR_MIN_VISIBLE_LINES 10
 #define EDITOR_MAX_VISIBLE_LINES 200
@@ -75,6 +116,9 @@ typedef char unsigned uint8;
 #define SYNTHESIZER_FADE_FRAMES 500
 #define SYNTHESIZER_TONE_CAPACITY 8
 
+#include "dynamic_memory.c"
+#include "dynamic_array.c"
+
 typedef enum Waveform {
     WAVEFORM_NONE,
     WAVEFORM_SINE,
@@ -84,14 +128,14 @@ typedef enum Waveform {
 } Waveform;
 
 typedef struct Chord {
-    int8 size;
-    int8 notes[OCTAVE];
+    uint8 size;
+    uint8 notes[OCTAVE];
     float frequencies[OCTAVE];
 } Chord;
 
 typedef struct Tone {
     Waveform waveform;
-    uint token_idx;
+    int token_idx;
     uint16 line_idx;
     uint16 char_idx;
     uint16 char_count;
@@ -119,6 +163,7 @@ typedef struct Editor_Theme {
     Color comment;
     Color linenumber;
     Color cursor;
+    Color cursor_line;
     Color selection;
     Color console_bg;
     Color console_foreground;
@@ -128,9 +173,9 @@ typedef struct Editor_Theme {
 } Editor_Theme;
 
 typedef enum Editor_Action_Type {
-    EDITOR_ACTION_ADD_LINE,
     EDITOR_ACTION_ADD_CHAR,
     EDITOR_ACTION_DELETE_CHAR,
+    EDITOR_ACTION_ADD_LINE,
     EDITOR_ACTION_DELETE_LINE,
     EDITOR_ACTION_DELETE_STRING,
     EDITOR_ACTION_ADD_STRING,
@@ -146,10 +191,16 @@ typedef struct Editor_Action {
     Editor_Coord coord;
     union {
         char character;
-        char *string;
+        DynArray string;
         Editor_Coord extra_coord;
-    };
+    } data;
 } Editor_Action;
+
+typedef struct Editor_Wrap_Line {
+    int logical_idx;
+    int visual_idx;
+    int wrap_amount;
+} Editor_Wrap_Line;
 
 typedef struct Editor {
     Font font;
@@ -158,10 +209,13 @@ typedef struct Editor {
 
     char current_file[EDITOR_FILENAME_MAX_LENGTH];
 
-    int line_count;
-    char lines[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH];
+    DynArray lines;
 
     int visible_lines;
+
+    int wrap_idx;
+    int wrap_line_count;
+    Editor_Wrap_Line wrap_lines[EDITOR_MAX_VISIBLE_LINES];
 
     Editor_Coord cursor;
     int selection_x;
@@ -172,8 +226,7 @@ typedef struct Editor {
     int autoclick_key;
     float autoclick_down_time;
 
-    int clipboard_line_count;
-    char *clipboard;
+    DynArray clipboard;
 
     char file_search_buffer[EDITOR_FILE_SEARCH_BUFFER_MAX];
     int file_search_buffer_length;
@@ -199,7 +252,7 @@ typedef struct Editor {
     int console_line_count;
     int console_highlight_idx;
 
-    char whatever_buffer[EDITOR_WHATEVER_BUFFER_LENGTH];
+    DynArray whatever_buffer;
 } Editor;
 
 typedef struct Editor_Selection_Data {
@@ -332,8 +385,7 @@ typedef struct Compiler {
     Compiler_Error error_type;
     Parser parser;
     char error_message[256];
-    char **data;
-    int data_len;
+    DynArray *data;
     int line_number;
     int char_idx;
     int token_amount;
@@ -414,7 +466,7 @@ inline static bool is_uppercase(char c) {
     return (c >= 'A' && c <= 'Z');
 }
 
-inline static int is_valid_in_identifier(char c) {
+inline static bool is_valid_in_identifier(char c) {
     return is_alphabetic(c) || is_numeric(c) || c == '_';
 }
 
@@ -422,39 +474,5 @@ inline static bool has_flag(int flags, int flag) {
     return (flags & flag) == flag;
 }
 
-#ifdef DEBUG
-#include <stdio.h>
-static int allocations = 0;
 #endif
 
-inline static void *dyn_mem_alloc(size_t size) {
-    #ifdef DEBUG
-        allocations++;
-        void *m = malloc(size);
-        printf("malloc %p (%i)\n", m, allocations);
-        return m;
-    #else
-        return malloc(size);
-    #endif
-}
-
-inline static void *dyn_mem_alloc_zero(size_t size) {
-    #ifdef DEBUG
-        allocations++;
-        void *m = calloc(1, size);
-        printf("calloc %p (%i)\n", m, allocations);
-        return m;
-    #else
-        return calloc(1, size);
-    #endif
-}
-
-inline static void dyn_mem_release(void *m) {
-    #ifdef DEBUG
-        allocations--;
-        printf("free %p (%i)\n", m, allocations);
-    #endif
-    free(m);
-}
-
-#endif

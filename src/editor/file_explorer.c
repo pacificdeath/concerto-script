@@ -3,27 +3,37 @@
 #include "../main.h"
 #include "editor_utils.c"
 
-void editor_load_program(State *state, char *filename) {
+void editor_load_program(State *state, const char *filename) {
     Editor *e = &state->editor;
+
+    editor_clear(state);
+
+    if (filename == NULL) {
+        return;
+    }
+
     FILE *file;
-    char line[EDITOR_LINE_MAX_LENGTH];
     file = fopen(filename, "r");
     if (file == NULL) {
         return;
     }
-    e->line_count = 1;
-    int i;
-    for (i = 0; fgets(line, sizeof(line), file) != NULL; i += 1) {
-        strcpy(e->lines[i], line);
-        int len = strlen(e->lines[i]);
-        e->lines[i][len - 1] = '\0';
+
+    int c_int;
+    int current_line_idx = 0;
+    DynArray *current_line = dyn_array_get(&e->lines, current_line_idx);
+    while ((c_int = fgetc(file)) != EOF) {
+        if (c_int == '\n') {
+            DynArray new_line;
+            dyn_array_alloc(&new_line, sizeof(char));
+            dyn_array_push(&e->lines, &new_line);
+            current_line_idx++;
+            current_line = dyn_array_get(&e->lines, current_line_idx);
+        } else {
+            char c = (char)c_int;
+            dyn_array_push(current_line, &c);
+        }
     }
-    if (i == 0) {
-        e->lines[i][0] = '\0';
-        e->line_count = 1;
-    } else {
-        e->line_count = i;
-    }
+
     strcpy(e->current_file, filename);
     fclose(file);
     set_cursor_y(state, 0);
@@ -32,16 +42,19 @@ void editor_load_program(State *state, char *filename) {
 }
 
 bool editor_save_file(State *state) {
+    Editor *e = &state->editor;
     FILE *file;
-    file = fopen(state->editor.current_file, "w");
+    file = fopen(e->current_file, "w");
     if (file == NULL) {
         return false;
     }
-    for (int i = 0; i < state->editor.line_count; i++) {
-        int len = strlen(state->editor.lines[i]);
-        state->editor.lines[i][len] = '\n';
-        fwrite(state->editor.lines[i], sizeof(char), len, file);
-        state->editor.lines[i][len] = '\0';
+    for (int i = 0; i < e->lines.length; i++) {
+        DynArray *line = dyn_array_get(&e->lines, i);
+        char c = '\n';
+        dyn_array_insert(line, line->length, &c, 1);
+        fwrite(line->data, sizeof(char), line->length, file);
+        c = '\0';
+        dyn_array_set(line, line->length - 1, &c);
         fwrite("\n", sizeof(char), 1, file);
     }
     fclose(file);
@@ -50,11 +63,9 @@ bool editor_save_file(State *state) {
 
 void update_filename_buffer(State *state, char *directory) {
     Editor *e = &state->editor;
-    char filter[64];
-    sprintf(filter, "%s\\%s*.*", directory, e->file_search_buffer);
-    int file_amount = list_files(filter, e->filename_buffer, EDITOR_FILENAMES_MAX_AMOUNT);
-    char console_text[EDITOR_FILENAMES_MAX_AMOUNT * EDITOR_FILENAME_MAX_LENGTH];
-    sprintf(console_text, "%s\n%s", e->file_search_buffer, e->filename_buffer);
+    const char *filter = TextFormat("%s\\%s*.*", directory, e->file_search_buffer);
+    list_files(filter, e->filename_buffer, EDITOR_FILENAMES_MAX_AMOUNT);
+    const char *console_text = TextFormat("%s\n%s", e->file_search_buffer, e->filename_buffer);
     console_set_text(state, console_text);
     e->console_highlight_idx = 1;
 }
@@ -92,8 +103,7 @@ Big_State file_explorer(State *state, bool shift) {
     } else if (IsKeyPressed(KEY_ENTER)) {
         char filename[128];
         console_get_highlighted_text(state, filename);
-        char filepath[128];
-        sprintf(filepath, "%s\\%s", directory, filename);
+        const char *filepath = TextFormat("%s\\%s", directory, filename);
         switch (state->state) {
         default: return STATE_EDITOR;
         case STATE_EDITOR_FILE_EXPLORER_THEMES:

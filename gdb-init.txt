@@ -1,0 +1,6 @@
+set confirm off
+break exit
+commands
+  up 2
+end
+run

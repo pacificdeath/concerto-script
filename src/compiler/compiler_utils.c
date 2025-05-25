@@ -32,7 +32,7 @@ static Chord get_chord(int token_amount, Token *tokens, int *token_idx, Compiler
             (*error) = ERROR_CHORD_TOO_MANY_NOTES;
             return INVALID_CHORD;
         }
-        chord.notes[chord.size] = tokens[*token_idx].value.int_number;
+        chord.notes[(int)chord.size] = tokens[*token_idx].value.int_number;
         chord.size++;
         (*token_idx)++;
     }

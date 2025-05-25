@@ -3,7 +3,7 @@
 #include "../main.h"
 #include "editor_utils.c"
 
-void console_set_text(State *state, char *text) {
+void console_set_text(State *state, const char *text) {
     Editor *e = &state->editor;
     for (int i = 0; i < CONSOLE_LINE_CAPACITY; i++) {
         e->console_text[i][0] = '\0';
@@ -15,23 +15,13 @@ void console_set_text(State *state, char *text) {
         switch (text[i]) {
         case '\0':
         case '\n':
-            #if DEBUG
-            if (current_line >= CONSOLE_LINE_CAPACITY - 2) {
-                printf("Console: NO! BAD LINE! VERY VERY BAD LINE!");
-                exit(1);
-            }
-            #endif
+            ASSERT(current_line < CONSOLE_LINE_CAPACITY);
             e->console_text[current_line][current_char] = '\0';
             current_line++;
             current_char = 0;
             break;
         default:
-            #if DEBUG
-            if (current_char >= CONSOLE_LINE_MAX_LENGTH - 2) {
-                printf("Console: NO! BAD CHAR! VERY VERY BAD CHAR!");
-                exit(1);
-            }
-            #endif
+            ASSERT(current_char < CONSOLE_LINE_MAX_LENGTH);
             e->console_text[current_line][current_char] = text[i];
             current_char++;
             break;

@@ -17,11 +17,25 @@ Keyboard_Layout get_keyboard_layout() {
     }
 }
 
+void reset_console_color() {
+    HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleTextAttribute(console, FOREGROUND_RED|FOREGROUND_GREEN|FOREGROUND_BLUE);
+}
+
+void set_console_color(ConsoleColor color) {
+    HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
+    int win_color = FOREGROUND_INTENSITY;
+    if ((color & CONSOLE_FG_RED  ) == CONSOLE_FG_RED  ) win_color |= FOREGROUND_RED;
+    if ((color & CONSOLE_FG_GREEN) == CONSOLE_FG_GREEN) win_color |= FOREGROUND_GREEN;
+    if ((color & CONSOLE_FG_BLUE ) == CONSOLE_FG_BLUE ) win_color |= FOREGROUND_BLUE;
+    SetConsoleTextAttribute(console, win_color);
+}
+
 void sleep(unsigned long milliseconds) {
     Sleep(milliseconds);
 }
 
-int list_files(char *dir, char *buffer, int max) {
+int list_files(const char *dir, char *buffer, int max) {
     buffer[0] = '\0';
 
     WIN32_FIND_DATA find_data;

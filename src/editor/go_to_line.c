@@ -16,8 +16,8 @@ Big_State go_to_line(State *state) {
             return state->state;
         }
         int line = TextToInteger(e->go_to_line_buffer) - 1;
-        if (line >= e->line_count) {
-            line = e->line_count - 1;
+        if (line >= e->lines.length) {
+            line = e->lines.length - 1;
         } else if (line < 0) {
             line = 0;
         }

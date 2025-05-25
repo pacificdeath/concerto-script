@@ -1,19 +1,11 @@
-#include "raylib.h"
-
-#include <stdint.h>
-#include <math.h>
-#include <stdio.h>
-#include <string.h>
-#include <ctype.h>
-
 #include "main.h"
-#include "windows_wrapper.h"
-#include "compiler/compiler.h"
-#include "editor/editor.h"
+
+#include "compiler/compiler.c"
+#include "editor/editor.c"
 #include "synthesizer.c"
 
-#ifdef TEST_THREAD
-    #include "test_thread.c"
+#ifdef TEST
+    #include "test.c"
 #endif
 
 #define OCTAVE_OFFSET 12.0f
@@ -38,10 +30,15 @@ void compiler_thread(void *data) {
 }
 
 int main(int argc, char **argv) {
+    #ifdef TEST
+        run_tests();
+        exit(0);
+    #endif
+
     State *state = (State *)dyn_mem_alloc_zero(sizeof(State));
 
     SetTraceLogLevel(
-        #ifdef DEBUG
+        #ifdef VERBOSE
             LOG_DEBUG
         #else
             LOG_WARNING
@@ -76,7 +73,7 @@ int main(int argc, char **argv) {
         switch (state->state) {
         default: break;
         case STATE_TRY_COMPILE: {
-            compiler_start(&state->compiler, state->editor.line_count, state->editor.lines);
+            compiler_start(&state->compiler, &state->editor.lines);
             if (state->compiler.error_type != NO_ERROR) {
                 editor_error_display(state, state->compiler.error_message);
                 compiler_reset(&state->compiler);

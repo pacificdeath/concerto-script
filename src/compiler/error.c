@@ -1,10 +1,10 @@
 #include "../main.h"
 
-static void populate_error_message(Compiler *result, int line_number, int char_idx) {
-    result->error_message[0] = '\0';
+static void populate_error_message(Compiler *compiler, int line_number, int char_idx) {
+    compiler->error_message[0] = '\0';
     char str_buffer[128];
 
-    switch (result->error_type) {
+    switch (compiler->error_type) {
     case NO_ERROR:
         sprintf(str_buffer, "No error");
         break;
@@ -63,11 +63,11 @@ static void populate_error_message(Compiler *result, int line_number, int char_i
         sprintf(str_buffer, "Unknown error");
         break;
     }
-    strcat(result->error_message, str_buffer);
+    strcat(compiler->error_message, str_buffer);
 
     int visual_line_number = line_number + 1;
     sprintf(str_buffer, "\nOn line %d:\n", visual_line_number);
-    strcat(result->error_message, str_buffer);
+    strcat(compiler->error_message, str_buffer);
 
     int slice_max_right = 20;
     int slice_start = char_idx > slice_max_right ? char_idx - slice_max_right : 0;
@@ -78,20 +78,22 @@ static void populate_error_message(Compiler *result, int line_number, int char_i
     {
         int i;
         for (i = 0; i < slice_len; i++) {
-            slice[i] = result->data[line_number][slice_start + i];
+            DynArray *line = dyn_array_get(compiler->data, line_number);
+            char c = dyn_char_get(line, slice_start + i);
+            slice[i] = c;
         }
         slice[i] = '\0';
     }
     int pre_truncation_offset = 0;
     if (slice_start > 0) {
-        strcat(result->error_message, "...");
+        strcat(compiler->error_message, "...");
         pre_truncation_offset = 3;
     }
-    strcat(result->error_message, slice);
-    if (slice_start + slice_len < strlen(result->data[0])) {
-        strcat(result->error_message, "...");
+    strcat(compiler->error_message, slice);
+    if (slice_start + slice_len < compiler->data->length) {
+        strcat(compiler->error_message, "...");
     }
-    strcat(result->error_message, "\n");
+    strcat(compiler->error_message, "\n");
     {
         int i;
         for (i = 0; i < pre_truncation_offset + char_idx - slice_start; i++) {
@@ -99,7 +101,7 @@ static void populate_error_message(Compiler *result, int line_number, int char_i
         }
         str_buffer[i] = '\0';
     }
-    strcat(result->error_message, str_buffer);
+    strcat(compiler->error_message, str_buffer);
     str_buffer[0] = '^';
     {
         int i;
@@ -108,7 +110,7 @@ static void populate_error_message(Compiler *result, int line_number, int char_i
         }
         str_buffer[i] = '\0';
     }
-    strcat(result->error_message, str_buffer);
+    strcat(compiler->error_message, str_buffer);
     return;
 }
 

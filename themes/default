@@ -9,6 +9,7 @@ space : 4
 comment : 4
 linenumber : 888
 cursor : 0ff
+cursor_line : 2
 selection : 08f8
 console_background : 0
 console_foreground : 0f0

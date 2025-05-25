@@ -16,15 +16,11 @@ void compiler_init(Compiler *c) {
     c->mutex = mutex_create();
 }
 
-void compiler_start(Compiler *c, int data_len, char data[EDITOR_LINE_CAPACITY][EDITOR_LINE_MAX_LENGTH]) {
+void compiler_start(Compiler *c, DynArray *data) {
     mutex_lock(c->mutex);
-        c->data_len = data_len;
-        c->data = (char**)dyn_mem_alloc(sizeof(char *) * data_len);
+        c->data = data;
         if (c->data == NULL) {
             thread_error();
-        }
-        for (int i = 0; i < data_len; i++) {
-            c->data[i] = data[i];
         }
 
         c->tokens = NULL;
@@ -97,10 +93,6 @@ void compiler_reset(Compiler *c) {
             default:
                 break;
             }
-        }
-        if (c->data != NULL) {
-            dyn_mem_release(c->data);
-            c->data = NULL;
         }
         if (c->tokens != NULL) {
             dyn_mem_release(c->tokens);

@@ -21,16 +21,18 @@ inline static int digit_count(int n) {
     return -1;
 }
 
-inline static int str_to_int(char* string, int idx, Compiler_Error *error) {
+inline static int str_to_int(DynArray *string, int idx, Compiler_Error *error) {
     int num_chars_count = 0;
     char num_chars[4];
-    while (is_numeric(string[idx + num_chars_count])) {
-        num_chars[num_chars_count] = string[idx + num_chars_count];
+    char current = dyn_char_get(string, idx);
+    while (is_numeric(current)) {
+        num_chars[num_chars_count] = current;
         num_chars_count++;
         if (num_chars_count > 4) {
             (*error) = ERROR_NUMBER_TOO_BIG;
             return 0;
         }
+        current = dyn_char_get(string, idx + num_chars_count);
     }
     int number = 0;
     int multiplier = 1;
@@ -41,37 +43,37 @@ inline static int str_to_int(char* string, int idx, Compiler_Error *error) {
     return number;
 }
 
-inline static Token *token_add(Compiler *result, Token_Type token_type) {
-    int address = result->token_amount;
-    Token* token = &(result->tokens[address]);
+inline static Token *token_add(Compiler *compiler, Token_Type token_type) {
+    int address = compiler->token_amount;
+    Token* token = &(compiler->tokens[address]);
     token->address = address;
     token->type = token_type;
-    token->line_number = result->line_number;
-    token->char_index = result->char_idx;
-    result->token_amount++;
+    token->line_number = compiler->line_number;
+    token->char_index = compiler->char_idx;
+    compiler->token_amount++;
     return token;
 }
 
-static bool try_get_play_or_wait_token(Compiler *result) {
-    char *line = result->data[result->line_number];
-    int char_idx = result->char_idx;
+static bool try_get_play_or_wait_token(Compiler *compiler) {
+    DynArray *line = dyn_array_get(compiler->data, compiler->line_number);
+    int char_idx = compiler->char_idx;
 
     Token_Type token_type = TOKEN_NONE;
 
     if (
-        line[char_idx] == 'p' &&
-        line[char_idx + 1] == 'l' &&
-        line[char_idx + 2] == 'a' &&
-        line[char_idx + 3] == 'y'
+        dyn_char_get(line, char_idx) == 'p' &&
+        dyn_char_get(line, char_idx + 1) == 'l' &&
+        dyn_char_get(line, char_idx + 2) == 'a' &&
+        dyn_char_get(line, char_idx + 3) == 'y'
     ) {
         token_type = TOKEN_PLAY;
     }
 
     if (token_type == TOKEN_NONE &&
-        line[char_idx] == 'w' &&
-        line[char_idx + 1] == 'a' &&
-        line[char_idx + 2] == 'i' &&
-        line[char_idx + 3] == 't'
+        dyn_char_get(line, char_idx) == 'w' &&
+        dyn_char_get(line, char_idx + 1) == 'a' &&
+        dyn_char_get(line, char_idx + 2) == 'i' &&
+        dyn_char_get(line, char_idx + 3) == 't'
     ) {
         token_type = TOKEN_WAIT;
     }
@@ -84,12 +86,12 @@ static bool try_get_play_or_wait_token(Compiler *result) {
 
     float duration_divisor;
 
-    switch (line[char_idx]) {
+    switch (dyn_char_get(line, char_idx)) {
     default: {
         duration_divisor = 0.25f;
     } break;
     case '1': {
-        if (line[char_idx + 1] == '6') {
+        if (dyn_char_get(line, char_idx + 1) == '6') {
             char_idx += 2;
             duration_divisor = 0.0625f;
         } else {
@@ -110,7 +112,7 @@ static bool try_get_play_or_wait_token(Compiler *result) {
         duration_divisor = 0.125f;
     } break;
     case '3': {
-        if (line[char_idx + 1] == '2') {
+        if (dyn_char_get(line, char_idx + 1) == '2') {
             char_idx += 2;
             duration_divisor = 0.03125f;
         } else {
@@ -118,7 +120,7 @@ static bool try_get_play_or_wait_token(Compiler *result) {
         }
     } break;
     case '6': {
-        if (line[char_idx + 1] == '4') {
+        if (dyn_char_get(line, char_idx + 1) == '4') {
             char_idx += 2;
             duration_divisor = 0.015625f;
         } else {
@@ -127,25 +129,25 @@ static bool try_get_play_or_wait_token(Compiler *result) {
     } break;
     }
 
-    switch (line[char_idx]) {
+    switch (dyn_char_get(line, char_idx)) {
     default: {
-        if (is_valid_in_identifier(line[char_idx])) {
+        if (is_valid_in_identifier(dyn_char_get(line, char_idx))) {
             return false;
         }
     } break;
     case 'd': {
         if (
-            line[char_idx + 1] != 'o' ||
-            line[char_idx + 2] != 't'
+            dyn_char_get(line, char_idx + 1) != 'o' ||
+            dyn_char_get(line, char_idx + 2) != 't'
         ) {
             return false;
         }
         char_idx += 3;
         int dot_amount = 1;
-        if (is_numeric(line[char_idx])) {
-            dot_amount = char_to_int(line[char_idx]);
+        if (is_numeric(dyn_char_get(line, char_idx))) {
+            dot_amount = char_to_int(dyn_char_get(line, char_idx));
             char_idx++;
-        } else if (is_valid_in_identifier(line[char_idx])) {
+        } else if (is_valid_in_identifier(dyn_char_get(line, char_idx))) {
             return false;
         }
         for (int i = 0; i < dot_amount; i++) {
@@ -154,12 +156,12 @@ static bool try_get_play_or_wait_token(Compiler *result) {
     } break;
     case 't': {
         if (
-            line[char_idx + 1] != 'r' ||
-            line[char_idx + 2] != 'i' ||
-            line[char_idx + 3] != 'p' ||
-            line[char_idx + 4] != 'l' ||
-            line[char_idx + 5] != 'e' ||
-            line[char_idx + 6] != 't'
+            dyn_char_get(line, char_idx + 1) != 'r' ||
+            dyn_char_get(line, char_idx + 2) != 'i' ||
+            dyn_char_get(line, char_idx + 3) != 'p' ||
+            dyn_char_get(line, char_idx + 4) != 'l' ||
+            dyn_char_get(line, char_idx + 5) != 'e' ||
+            dyn_char_get(line, char_idx + 6) != 't'
         ) {
             return false;
         }
@@ -168,21 +170,21 @@ static bool try_get_play_or_wait_token(Compiler *result) {
     } break;
     }
 
-    Token *token = token_add(result, token_type);
+    Token *token = token_add(compiler, token_type);
     token->value.play_or_wait.duration = duration_divisor;
-    token->value.play_or_wait.char_count = char_idx - result->char_idx;
-    result->char_idx = char_idx - 1;
+    token->value.play_or_wait.char_count = char_idx - compiler->char_idx;
+    compiler->char_idx = char_idx - 1;
 
     return true;
 }
 
-static bool try_get_note_token(Compiler *result) {
-    char *line = result->data[result->line_number];
-    int char_idx = result->char_idx;
+static bool try_get_note_token(Compiler *compiler) {
+    DynArray *line = dyn_array_get(compiler->data, compiler->line_number);
+    int char_idx = compiler->char_idx;
 
     int note = SILENCE;
 
-    switch (line[char_idx]) {
+    switch (dyn_char_get(line, char_idx)) {
     case 'c':
     case 'C': note = -9; break;
     case 'd':
@@ -203,8 +205,8 @@ static bool try_get_note_token(Compiler *result) {
 
     int octave = 0;
     bool note_is_valid_identifier = true;
-    if (!isspace(line[char_idx])) {
-        switch (line[char_idx]) {
+    if (!isspace(dyn_char_get(line, char_idx))) {
+        switch (dyn_char_get(line, char_idx)) {
         case '#':
             note++;
             char_idx++;
@@ -220,19 +222,19 @@ static bool try_get_note_token(Compiler *result) {
         }
     }
 
-    if (!isspace(line[char_idx])) {
-        if (line[char_idx] >= '0' && line[char_idx] <= '8') {
-            octave = (char_to_int(line[char_idx]) * (float)OCTAVE) - A4_OFFSET;
+    if (!isspace(dyn_char_get(line, char_idx))) {
+        if (dyn_char_get(line, char_idx) >= '0' && dyn_char_get(line, char_idx) <= '8') {
+            octave = (char_to_int(dyn_char_get(line, char_idx)) * (float)OCTAVE) - A4_OFFSET;
             char_idx++;
         }
-        if (note_is_valid_identifier && !isspace(line[char_idx]) && is_valid_in_identifier(line[char_idx])) {
+        if (note_is_valid_identifier && !isspace(dyn_char_get(line, char_idx)) && is_valid_in_identifier(dyn_char_get(line, char_idx))) {
             return false;
         }
     }
 
-    Token *token = token_add(result, TOKEN_NOTE);
+    Token *token = token_add(compiler, TOKEN_NOTE);
     token->value.int_number = octave + note,
-    result->char_idx = char_idx - 1;
+    compiler->char_idx = char_idx - 1;
 
     return true;
 }
@@ -246,15 +248,15 @@ static Compiler_Error lexer_run(Compiler *c) {
 
     int paren_nest_level = 0;
     int paren_open_addresses[MAX_PAREN_NESTING] = {0};
-    for (int line_i = 0; line_i < c->data_len; line_i++) {
-        char *line = c->data[line_i];
+    for (int line_i = 0; line_i < c->data->length; line_i++) {
+        DynArray *line = dyn_array_get(c->data, line_i);
         c->line_number++;
         c->char_idx = 0;
-        for (int *i = &(c->char_idx); line[*i] != '\0' && line[*i] != COMMENT_CHAR; *i += 1) {
-            if (isspace(line[*i])) {
+        for (int *i = &(c->char_idx); dyn_char_get(line, *i) != '\0' && dyn_char_get(line, *i) != COMMENT_CHAR; *i += 1) {
+            if (isspace(dyn_char_get(line, *i))) {
                 continue;
             }
-            switch (line[*i]) {
+            switch (dyn_char_get(line, *i)) {
             case '(': {
                 if (paren_nest_level >= MAX_PAREN_NESTING) {
                     return ERROR_NESTING_TOO_DEEP;
@@ -281,7 +283,7 @@ static Compiler_Error lexer_run(Compiler *c) {
                 if (try_get_play_or_wait_token(c)) {
                     break;
                 }
-                if (is_numeric(line[*i])) {
+                if (is_numeric(dyn_char_get(line, *i))) {
                     Compiler_Error str_to_int_error = NO_ERROR;
                     int number = str_to_int(line, *i, &str_to_int_error);
                     if (str_to_int_error != NO_ERROR) {
@@ -292,16 +294,16 @@ static Compiler_Error lexer_run(Compiler *c) {
                     *i += (digit_count(number) - 1);
                     break;
                 }
-                if (!is_valid_in_identifier(line[*i])) {
+                if (!is_valid_in_identifier(dyn_char_get(line, *i))) {
                     return ERROR_SYNTAX_ERROR;
                 }
                 int ident_length = 0;
-                for (int j = *i; is_valid_in_identifier(line[j]); j++) {
+                for (int j = *i; is_valid_in_identifier(dyn_char_get(line, j)); j++) {
                     ident_length++;
                 }
                 char ident[1024];
                 for (int j = 0; j < ident_length; j++) {
-                    ident[j] = line[*i + j];
+                    ident[j] = dyn_char_get(line, *i + j);
                 }
                 ident[ident_length] = '\0';
                 if (strcmp("start", ident) == 0) {

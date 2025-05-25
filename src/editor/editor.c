@@ -21,11 +21,12 @@ void editor_init(State *state, char *filename) {
     if (theme_status == EDITOR_THEME_CHANGED_ERROR) {
         state->state = STATE_EDITOR_THEME_ERROR;
     }
-    e->line_count = 1;
+    dyn_array_alloc(&e->lines, sizeof(DynArray));
     e->autoclick_key = KEY_NULL;
     e->finder_match_idx = -1;
     e->console_highlight_idx = -1;
     e->visible_lines = EDITOR_DEFAULT_VISIBLE_LINES;
+    dyn_array_alloc(&e->whatever_buffer, sizeof(char));
     editor_load_program(state, filename);
 }
 
@@ -77,14 +78,11 @@ Big_State editor_input(State *state) {
             return STATE_EDITOR_FILE_EXPLORER_PROGRAMS;
         }
         if (ctrl && IsKeyPressed(KEY_S)) {
-            char buffer[EDITOR_FILENAME_MAX_LENGTH];
             if (editor_save_file(state)) {
-                sprintf(buffer, "\"%s\" saved", e->current_file);
-                console_set_text(state, buffer);
+                console_set_text(state, TextFormat("\"%s\" saved", e->current_file));
                 return STATE_EDITOR_SAVE_FILE;
             } else {
-                sprintf(buffer, "Saving failed for file:\n\"%s\"", e->current_file);
-                console_set_text(state, buffer);
+                console_set_text(state, TextFormat("Saving failed for file:\n\"%s\"", e->current_file));
                 return STATE_EDITOR_SAVE_FILE_ERROR;
             }
         }
@@ -112,8 +110,8 @@ Big_State editor_input(State *state) {
             e->visual_vertical_offset -= (scroll * EDITOR_SCROLL_MULTIPLIER);
             if (e->visual_vertical_offset < 0) {
                 e->visual_vertical_offset = 0;
-            } else if (e->visual_vertical_offset > e->line_count - 1) {
-                e->visual_vertical_offset = e->line_count - 1;
+            } else if (e->visual_vertical_offset > e->lines.length - 1) {
+                e->visual_vertical_offset = e->lines.length - 1;
             }
         }
 
@@ -126,19 +124,18 @@ Big_State editor_input(State *state) {
                 break;
             }
             float line_height = editor_line_height(state);
-            int requested_line = (int)(mouse_pos.y / line_height);
-            requested_line += e->visual_vertical_offset;
-            if (requested_line >= e->line_count) {
-                requested_line = e->line_count - 1;
+            int requested_line = (int)(mouse_pos.y / line_height) + e->visual_vertical_offset;
+            if (requested_line >= e->lines.length) {
+                requested_line = e->lines.length - 1;
             }
+            DynArray *line = dyn_array_get(&e->lines, requested_line);
             float char_width = editor_char_width(line_height);
             int requested_char = roundf((mouse_pos.x / char_width) - EDITOR_LINE_NUMBER_PADDING);
-            int len = strlen(e->lines[requested_line]);
             if (requested_char < 0) {
                 requested_char = 0;
             }
-            if (requested_char >= len) {
-                requested_char = len;
+            if (requested_char >= (int)line->length) {
+                requested_char = line->length;
             }
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 set_cursor_y(state, requested_line);
@@ -162,12 +159,10 @@ Big_State editor_input(State *state) {
             break;
         }
         for (KeyboardKey key = 32; key < 127; key++) {
-            if (IsKeyPressed(key) && e->cursor.x < EDITOR_LINE_MAX_LENGTH - 2 && e->cursor.x < EDITOR_LINE_MAX_LENGTH - 1) {
+            if (IsKeyPressed(key)) {
                 char c = keyboard_key_to_char(state, key, shift);
                 cursor_add_char(state, c);
                 break;
-            } else {
-                // TODO: this is currently a silent failure and it should not at all be that
             }
         }
         if (IsKeyPressed(KEY_TAB)) {
@@ -181,15 +176,14 @@ Big_State editor_input(State *state) {
                 start_line = e->selection_y;
                 end_line = e->cursor.y;
             }
-            bool bad = false;
             int spaces_len = 1 + (end_line - start_line);
             int spaces[spaces_len];
             for (int i = 0; i < spaces_len; i++) {
+                DynArray *line = dyn_array_get(&e->lines, start_line + i);
                 if (selection_active || shift) {
                     set_cursor_y(state, start_line + i);
                     editor_set_cursor_x_first_non_whitespace(state);
                 }
-                int line_len = strlen(e->lines[start_line + i]);
                 if (shift) {
                     if (e->cursor.x == 0) {
                         spaces[i] = 0;
@@ -197,31 +191,20 @@ Big_State editor_input(State *state) {
                     }
                     for (
                         spaces[i] = 1;
-                        spaces[i] < line_len - 1
-                            && e->lines[start_line + i][spaces[i]] == ' '
+                        spaces[i] < line->length - (int)1
+                            && dyn_char_get(line, spaces[i]) == ' '
                             && (e->cursor.x - spaces[i]) % 4 != 0;
                         spaces[i]++
                     );
                 } else {
-                    for (spaces[i] = 1; (e->cursor.x + spaces[i]) % 4 != 0; spaces[i]++) {
-                        if (line_len + spaces[i] >= EDITOR_LINE_MAX_LENGTH - 2) {
-                            bad = true;
-                            break;
-                        }
-                    }
+                    for (spaces[0] = 1; (e->cursor.x - spaces[i]) % 4 != 0; spaces[i]++);
                 }
-            }
-            if (bad) {
-                break;
             }
             if (shift) {
                 for (int i = 0; i < spaces_len; i++) {
                     int line_idx = start_line + i;
-                    int line_len = strlen(e->lines[line_idx]);
-                    for (int j = spaces[i]; j < line_len; j++) {
-                        e->lines[line_idx][j - spaces[i]] = e->lines[line_idx][j];
-                    }
-                    e->lines[line_idx][line_len - spaces[i]] = '\0';
+                    DynArray *line = dyn_array_get(&e->lines, line_idx);
+                    dyn_array_remove(line, 0, spaces[i]);
                     set_cursor_x(state, e->cursor.x - spaces[i]);
                 }
             } else {
@@ -243,7 +226,7 @@ Big_State editor_input(State *state) {
                 e->cursor.y = start_line;
                 e->cursor.x = 0;
                 e->selection_y = end_line;
-                e->selection_x = strlen(e->lines[end_line]);
+                e->selection_x = ((DynArray *)dyn_array_get(&e->lines, end_line))->length;
             }
             break;
         }
@@ -302,6 +285,8 @@ void editor_error_display(State *state, char *error_message) {
 }
 
 void editor_render(State *state) {
+    editor_update_wrapped_line_data(state);
+
     switch (state->state) {
     default: {
     } break;
@@ -342,15 +327,16 @@ void editor_render(State *state) {
 void editor_free(State *state) {
     Editor *e = &state->editor;
     UnloadFont(e->font);
-    if (e->clipboard != NULL) {
-        dyn_mem_release(e->clipboard);
+    if (e->clipboard.data != NULL) {
+        dyn_array_release(&e->clipboard);
     }
     for (int i = 0; i < EDITOR_UNDO_BUFFER_MAX; i++) {
         Editor_Action *action = &(e->undo_buffer[i]);
         bool is_type_delete_selection = action->type == EDITOR_ACTION_DELETE_STRING;
-        bool is_allocated = action->string != NULL;
+        bool is_allocated = action->data.string.data != NULL;
         if (is_type_delete_selection && is_allocated) {
-            dyn_mem_release(action->string);
+            dyn_mem_release(&action->data.string);
         }
     }
 }
+
