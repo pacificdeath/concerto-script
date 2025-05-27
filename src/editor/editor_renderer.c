@@ -387,9 +387,6 @@ static void editor_render_state_write(State *state) {
     if (e->cursor_anim_time > pi2) {
         e->cursor_anim_time -= pi2;
     }
-    if (e->cursor.y >= e->wrap_idx) {
-        e->visual_vertical_offset++;
-    }
     Editor_Coord wrapped_cursor = editor_wrapped_coord(state, e->cursor);
     float alpha = (cos(e->cursor_anim_time) + 1.0) * 127.5f;
     Editor_Cursor_Render_Data cursor_data = {
