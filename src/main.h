@@ -129,7 +129,7 @@ typedef enum Waveform {
 
 typedef struct Chord {
     uint8 size;
-    uint8 notes[OCTAVE];
+    int8 notes[OCTAVE];
     float frequencies[OCTAVE];
 } Chord;
 
