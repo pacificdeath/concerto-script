@@ -342,7 +342,11 @@ static void editor_render_state_write(State *state) {
     float char_width = editor_char_width(line_height);
     float line_number_padding = char_width * EDITOR_LINE_NUMBER_PADDING;
 
-    render_cursor_line(state);
+    bool is_cursor_visible = is_line_visible(state, e->cursor.y);
+
+    if (is_cursor_visible) {
+        render_cursor_line(state);
+    }
 
     if (cursor_selection_active(state)) {
         Editor_Selection_Data selection_data = get_cursor_selection_data(state);
@@ -382,23 +386,25 @@ static void editor_render_state_write(State *state) {
 
     editor_render_base(state, line_height, char_width, line_number_padding);
 
-    e->cursor_anim_time = e->cursor_anim_time + (state->delta_time * EDITOR_CURSOR_ANIMATION_SPEED);
-    float pi2 = PI * 2.0f;
-    if (e->cursor_anim_time > pi2) {
-        e->cursor_anim_time -= pi2;
+    if (is_cursor_visible) {
+        e->cursor_anim_time = e->cursor_anim_time + (state->delta_time * EDITOR_CURSOR_ANIMATION_SPEED);
+        float pi2 = PI * 2.0f;
+        if (e->cursor_anim_time > pi2) {
+            e->cursor_anim_time -= pi2;
+        }
+        Editor_Coord wrapped_cursor = editor_wrapped_coord(state, e->cursor);
+        float alpha = (cos(e->cursor_anim_time) + 1.0) * 127.5f;
+        Editor_Cursor_Render_Data cursor_data = {
+            .y = wrapped_cursor.y,
+            .line_number_offset = line_number_padding,
+            .visual_vertical_offset = e->visual_vertical_offset,
+            .x = wrapped_cursor.x,
+            .line_height = line_height,
+            .char_width = char_width,
+            .alpha = alpha
+        };
+        render_cursor(cursor_data, e->theme.cursor);
     }
-    Editor_Coord wrapped_cursor = editor_wrapped_coord(state, e->cursor);
-    float alpha = (cos(e->cursor_anim_time) + 1.0) * 127.5f;
-    Editor_Cursor_Render_Data cursor_data = {
-        .y = wrapped_cursor.y,
-        .line_number_offset = line_number_padding,
-        .visual_vertical_offset = e->visual_vertical_offset,
-        .x = wrapped_cursor.x,
-        .line_height = line_height,
-        .char_width = char_width,
-        .alpha = alpha
-    };
-    render_cursor(cursor_data, e->theme.cursor);
 }
 
 void editor_render_state_wait_to_play(State *state) {

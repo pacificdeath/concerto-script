@@ -43,6 +43,17 @@ inline static int editor_line_number_string(char buffer[16], int line_number) {
     return strlen(buffer);
 }
 
+static bool is_line_visible(State *state, int line) {
+    Editor *e = &state->editor;
+    if (line < e->visual_vertical_offset) {
+        return false;
+    }
+    if (line >= (e->visual_vertical_offset + e->wrap_line_count)) {
+        return false;
+    }
+    return true;
+}
+
 Editor_Coord editor_wrapped_coord(State *state, Editor_Coord coord) {
     Editor *e = &state->editor;
     for (int i = 0; i < e->wrap_line_count; i++) {
