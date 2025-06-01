@@ -100,6 +100,7 @@ static void dyn_array_release(DynArray *arr) {
 }
 
 #ifdef DEBUG
+    __attribute__((unused))
     static void dyn_array_print(DynArray *arr) {
         printf("data: \"");
         for (int i = 0; i < arr->length; i++) {

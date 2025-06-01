@@ -17,7 +17,6 @@ static void render_cursor(Editor_Cursor_Render_Data data, Color color) {
 static void render_cursor_line(State *state) {
     Editor *e = &state->editor;
 
-    Editor_Coord wrapped_coord = editor_wrapped_coord(state, e->cursor);
     int line_idx = e->cursor.y - e->visual_vertical_offset;
 
     ASSERT(line_idx >= 0);
@@ -192,13 +191,9 @@ static bool is_note_at_coord(State *state, Editor_Coord coord) {
 static void editor_render_base(State *state, float line_height, float char_width, int line_number_padding) {
     Editor *e = &state->editor;
 
-    int window_line_count = editor_window_line_count(state);
-    int line_max_chars = editor_line_max_chars(state);
-
     for (int i = 0; i < e->wrap_line_count; i++) {
         int line_idx = e->wrap_lines[i].logical_idx;
         int visual_idx = e->wrap_lines[i].visual_idx;
-        int wrap_amount = e->wrap_lines[i].wrap_amount;
 
         if (line_idx >= e->lines.length) {
             break;

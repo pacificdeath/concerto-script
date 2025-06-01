@@ -18,6 +18,7 @@ typedef char int8;
 typedef char unsigned uint8;
 
 #ifdef DEBUG
+    __attribute__((unused))
     static void log_int(char *file_name, int line_number, char *literal_integer, int integer) {
         set_console_color(CONSOLE_FG_RED);
         printf("%s", file_name);
@@ -28,7 +29,7 @@ typedef char unsigned uint8;
         set_console_color(CONSOLE_FG_RED);
         reset_console_color();
 
-        printf(" (", literal_integer);
+        printf(" (");
         set_console_color(CONSOLE_FG_GREEN);
         printf("%s", literal_integer);
         reset_console_color();
@@ -39,6 +40,7 @@ typedef char unsigned uint8;
     }
     #define LOG(integer) do { log_int(__FILE__, __LINE__, #integer, integer); } while (0)
 
+    __attribute__((unused))
     static void are_you_a_horrible_person(bool condition, char *condition_string, char *file_name, int line_number) {
         if (!(condition)) {
             set_console_color(CONSOLE_FG_RED);
