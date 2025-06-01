@@ -10,6 +10,7 @@
 #include "file_explorer.c"
 #include "finder.c"
 #include "go_to_line.c"
+#include "go_to_definition.c"
 #include "editor_renderer.c"
 #include "console.c"
 

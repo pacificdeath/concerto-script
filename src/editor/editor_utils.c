@@ -305,7 +305,8 @@ static void snap_visual_vertical_offset_to_cursor(State *state) {
 
 static void center_visual_vertical_offset_around_cursor(State *state) {
     Editor *e = &state->editor;
-    int middle_line = e->visible_lines / 2;
+    int window_line_count = editor_window_line_count(state);
+    int middle_line = window_line_count / 2;
     if (e->cursor.y > middle_line) {
         e->visual_vertical_offset = e->cursor.y - middle_line;
     } else {
@@ -402,78 +403,6 @@ static bool cursor_delete_selection(State *state) {
     set_cursor_y(state, selection_data.start.y);
     set_cursor_x(state, selection_data.start.x);
     return true;
-}
-
-static void go_to_definition(State *state) {
-    Editor *e = &state->editor;
-
-    dyn_array_clear(&e->whatever_buffer);
-
-    int ident_offset = 1;
-    DynArray *cursor_line = dyn_array_get(&e->lines, e->cursor.y);
-    while ((e->cursor.x - ident_offset) >= 0 && is_valid_in_identifier(dyn_char_get(cursor_line, e->cursor.x + ident_offset))) {
-        ident_offset++;
-    }
-    ident_offset++;
-    int ident_len = 0;
-    while (is_valid_in_identifier(dyn_char_get(cursor_line, e->cursor.x + ident_offset))) {
-        char c = dyn_char_get(cursor_line, e->cursor.x + ident_offset);
-        dyn_array_push(&e->whatever_buffer, &c);
-        ident_offset++;
-        ident_len++;
-    }
-    int ident_line_idx = 0;
-    int ident_char_idx = 0;
-    int ident_idx = 0;
-    bool ident_found = false;
-
-    const char *define = "define";
-    int define_len = 6;
-    int define_idx = 0;
-    bool define_found = false;
-
-    for (int i = 0; i < e->lines.length; i++) {
-        if (ident_found) {
-            break;
-        }
-
-        DynArray *current_line = dyn_array_get(&e->lines, i);
-        for (int j = 0; current_line->length; j++) {
-            char current_char = dyn_char_get(current_line, j);
-            if (!define_found) {
-                bool define_char_matches = current_char == define[define_idx];
-                if (define_char_matches) {
-                    define_idx++;
-                }
-                if (define_idx == define_len) {
-                    define_found = true;
-                }
-            }
-            if (is_valid_in_identifier(current_char)) {
-                bool ident_char_matches = current_char == dyn_char_get(&e->whatever_buffer, ident_idx);
-                if (ident_char_matches) {
-                    ident_idx++;
-                    int next_idx = j + 1;
-                    char next = dyn_char_get(current_line, next_idx);
-                    if ((ident_idx == ident_len && !is_valid_in_identifier(next)) || next_idx >= current_line->length) {
-                        ident_line_idx = i;
-                        ident_char_idx = next_idx - ident_len;
-                        ident_found = true;
-                        break;
-                    }
-                } else {
-                    define_idx = 0;
-                    define_found = false;
-                    ident_idx = 0;
-                }
-            }
-        }
-    }
-    if (ident_found) {
-        set_cursor_y(state, ident_line_idx);
-        set_cursor_x(state, ident_char_idx);
-        center_visual_vertical_offset_around_cursor(state);
-    }
 }
 
 static void cursor_new_line(State *state) {
